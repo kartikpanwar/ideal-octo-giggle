@@ -7,10 +7,13 @@ from nicegui import ui
 from app.db import get_session
 from app.seed import export_csvs
 
+APP_NAME = "On My Plate"
+APP_ICON = "restaurant"  # a literal plate + utensils, matching the app name pun
+
 NAV = [
     ("Home", "/"),
     ("People", "/people"),
-    ("Strategy", "/strategy"),
+    ("Workstreams", "/workstreams"),
     ("Tasks", "/tasks"),
 ]
 
@@ -25,7 +28,9 @@ def header(active: str) -> None:
     """Render the top navigation bar. `active` is the label to highlight."""
     with ui.header().classes("items-center justify-between px-4"):
         with ui.row().classes("items-center gap-4"):
-            ui.label("Capacity Estimation").classes("text-lg font-bold")
+            with ui.row().classes("items-center gap-2"):
+                ui.icon(APP_ICON).classes("text-2xl")
+                ui.label(APP_NAME).classes("text-lg font-bold")
             for label, target in NAV:
                 link = ui.link(label, target).classes("text-white no-underline")
                 if label == active:

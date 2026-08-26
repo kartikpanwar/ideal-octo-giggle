@@ -28,6 +28,7 @@ class Base(DeclarativeBase):
 TASK_STATUSES = ["not_started", "in_progress", "blocked", "done", "cancelled"]
 WORKSTREAM_STATUSES = TASK_STATUSES
 STRATEGY_STATUSES = ["proposed", "active", "on_hold", "done", "cancelled"]
+TASK_PRIORITIES = ["low", "medium", "high"]
 
 
 class TeamMember(Base):
@@ -83,6 +84,7 @@ class Task(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String, default="not_started")
+    priority: Mapped[str | None] = mapped_column(String, default="medium")
     estimated_effort_weeks: Mapped[float | None] = mapped_column(Float)
     estimated_start: Mapped[date | None] = mapped_column(Date)
     estimated_end: Mapped[date | None] = mapped_column(Date)

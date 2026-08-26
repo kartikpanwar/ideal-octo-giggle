@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from datetime import date
 
-from app.pages.common import month_year_axis_label
+from app.models import STRATEGY_STATUSES, TASK_PRIORITIES, TASK_STATUSES, WORKSTREAM_STATUSES
+from app.pages.common import (
+    PRIORITY_BADGE_SLOT,
+    PRIORITY_COLORS,
+    STATUS_BADGE_SLOT,
+    STATUS_COLORS,
+    dot_badge_slot,
+    month_year_axis_label,
+)
 
 
 def _formatter(timeline_start: date) -> str:

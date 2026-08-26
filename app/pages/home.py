@@ -190,7 +190,9 @@ def build_workstream_person_grid_options(
         # rendered height doesn't scale with the chart's (data-driven) total
         # height, so a percentage margin shrinks below the legend's actual
         # height at low row counts and the legend overlaps the first row.
-        "grid": {"left": "16%", "right": "4%", "top": 55, "bottom": "12%", "containLabel": True},
+        # left/right are equal so containLabel expands symmetrically and the
+        # heatmap stays centred instead of drifting toward one side.
+        "grid": {"left": "4%", "right": "4%", "top": 55, "bottom": "12%", "containLabel": True},
         "xAxis": {
             "type": "category",
             "data": [m["name"] for m in members],
@@ -261,11 +263,3 @@ def build() -> None:
         else:
             chart_height = max(280, 45 * len(workstreams) + 140)
             ui.echart(grid_options).classes("w-full").style(f"height: {chart_height}px")
-
-        ui.separator()
-        with ui.card().classes("w-full bg-blue-50"):
-            ui.label("More visualisations coming soon").classes("text-base font-medium")
-            ui.label(
-                "This home page will grow charts for capacity trends, workstream burn-down, "
-                "and estimate history over time."
-            ).classes("text-sm text-gray-600")

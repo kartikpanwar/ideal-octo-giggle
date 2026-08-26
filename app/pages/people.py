@@ -114,7 +114,7 @@ def build_person_timeline_options(tasks: list[dict]) -> dict | None:
     planned vs. actual dates are directly comparable on one row.
 
     Uses the same invisible-offset + visible-duration stacked-bar workaround as
-    the workstream timeline (see app/pages/strategy.py), doubled: the
+    the workstream timeline (see app/pages/workstreams.py), doubled: the
     estimated pair uses stack "est", the actual pair uses stack "act" — two
     distinct stacks on the same category axis render as grouped bars.
     Tasks with neither a complete estimated nor actual date pair are excluded
@@ -272,7 +272,9 @@ def build_allocation_heatmap_options(members: list[dict], rows: list[dict]) -> d
         # rendered height doesn't scale with the chart's (data-driven) total
         # height, so a percentage margin shrinks below the legend's actual
         # height at low row counts and the legend overlaps the first row.
-        "grid": {"left": "12%", "right": "4%", "top": 55, "bottom": "16%", "containLabel": True},
+        # left/right are equal so containLabel expands symmetrically and the
+        # heatmap stays centred instead of drifting toward one side.
+        "grid": {"left": "4%", "right": "4%", "top": 55, "bottom": "16%", "containLabel": True},
         "xAxis": {
             "type": "category",
             "data": [_week_label(w) for w in weeks],

@@ -1,5 +1,5 @@
 """Small helpers shared across CRUD pages: date parsing, FK option lists, and
-the status colour map + table badge slot used on every status column."""
+the colour maps + table badge slots used on status/priority columns."""
 
 from __future__ import annotations
 
@@ -24,17 +24,42 @@ STATUS_COLORS = {
 }
 STATUS_COLOR_FALLBACK = "#9e9e9e"
 
-# body-cell-status slot for a ui.table: a coloured dot + the status text.
-# Requires each row dict to carry a "status_color" field (e.g.
-# STATUS_COLORS.get(row["status"], STATUS_COLOR_FALLBACK)) alongside "status".
-STATUS_BADGE_SLOT = (
-    '<q-td :props="props">'
-    '<div class="row items-center no-wrap" style="gap:6px">'
-    "<div :style=\"'background-color:' + props.row.status_color + "
-    "'; width:10px; height:10px; border-radius:50%; flex-shrink:0;'\"></div>"
-    "<span>{{ props.row.status }}</span>"
-    "</div></q-td>"
-)
+# Task priority -> colour. A classic traffic-light scale (green/amber/red),
+# deliberately a different palette from STATUS_COLORS even though it reuses
+# the same coloured-dot badge pattern — a task's status and priority appear
+# side by side in the same row, and sharing one colour map would make e.g. a
+# red "blocked" status dot and a red "high" priority dot look like the same
+# signal when they're not.
+PRIORITY_COLORS = {
+    "low": "#66bb6a",
+    "medium": "#fb8c00",
+    "high": "#e53935",
+}
+PRIORITY_COLOR_FALLBACK = "#9e9e9e"
+
+
+def dot_badge_slot(color_field: str, text_field: str) -> str:
+    """A body-cell-<column> slot for a ui.table: a coloured dot + text.
+    Requires each row dict to carry `color_field` (a CSS colour, e.g.
+    STATUS_COLORS.get(row["status"], STATUS_COLOR_FALLBACK)) alongside
+    `text_field` (the label to display)."""
+    return (
+        '<q-td :props="props">'
+        '<div class="row items-center no-wrap" style="gap:6px">'
+        f"<div :style=\"'background-color:' + props.row.{color_field} + "
+        "'; width:10px; height:10px; border-radius:50%; flex-shrink:0;'\"></div>"
+        f"<span>{{{{ props.row.{text_field} }}}}</span>"
+        "</div></q-td>"
+    )
+
+
+# body-cell-status slot: coloured dot + the status text (row needs "status"
+# and "status_color" fields).
+STATUS_BADGE_SLOT = dot_badge_slot("status_color", "status")
+
+# body-cell-priority slot: coloured dot + the priority text (row needs
+# "priority" and "priority_color" fields).
+PRIORITY_BADGE_SLOT = dot_badge_slot("priority_color", "priority")
 
 
 def parse_date(value: str | None) -> date | None:

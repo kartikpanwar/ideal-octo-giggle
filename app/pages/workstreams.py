@@ -1,4 +1,4 @@
-"""Strategy items and their workstreams, combined on one page: each
+"""Workstreams page: strategy items and their workstreams together — each
 strategy item is a card with its workstreams listed underneath. Also hosts
 the per-workstream task timeline rendered with ECharts (see docs/standards.md)."""
 
@@ -20,8 +20,6 @@ from app.pages.common import (
     strategy_options,
 )
 from app.pages.layout import header
-
-_ALL = "__all__"  # sentinel option value meaning "no filter"
 
 WORKSTREAM_COLUMNS = [
     {"name": "id", "label": "ID", "field": "id", "align": "left"},
@@ -211,9 +209,10 @@ def _save_workstream(row_id, name, description, strategy_id, status, lead_id, st
 
 
 def build() -> None:
-    header("Strategy")
+    header("Workstreams")
 
-    filters = {"workstream_status": _ALL}
+    # Multi-select: defaults to every status (i.e. no filtering) until narrowed.
+    filters = {"workstream_status": list(WORKSTREAM_STATUSES)}
 
     def refresh() -> None:
         content_holder.clear()
@@ -235,9 +234,7 @@ def build() -> None:
             _render_unassigned_card(unassigned)
 
     def _filtered(workstreams: list[dict]) -> list[dict]:
-        if filters["workstream_status"] == _ALL:
-            return workstreams
-        return [w for w in workstreams if w["status"] == filters["workstream_status"]]
+        return [w for w in workstreams if w["status"] in filters["workstream_status"]]
 
     def _render_workstream_table(workstreams: list[dict]) -> None:
         visible = _filtered(workstreams)
@@ -373,18 +370,17 @@ def build() -> None:
         dialog.open()
 
     def _set_workstream_status_filter(value) -> None:
-        filters["workstream_status"] = _ALL if value is None else value
+        filters["workstream_status"] = value or []
         refresh()
 
     with ui.row().classes("items-center gap-4 p-4"):
-        ui.label("Strategy").classes("text-xl font-bold")
+        ui.label("Workstreams").classes("text-xl font-bold")
         ui.button("Add strategy item", icon="add", on_click=lambda: open_strategy_form())
 
-    ws_status_opts = {_ALL: "All statuses", **{s: s for s in WORKSTREAM_STATUSES}}
     with ui.row().classes("items-center gap-4 px-4 pb-2"):
         ui.label("Filter workstreams:").classes("text-sm text-gray-500")
-        ui.select(ws_status_opts, value=_ALL, label="Status",
-                  on_change=lambda e: _set_workstream_status_filter(e.value)).classes("w-52")
+        ui.select(WORKSTREAM_STATUSES, label="Status", multiple=True, value=list(WORKSTREAM_STATUSES),
+                  on_change=lambda e: _set_workstream_status_filter(e.value)).classes("w-64")
 
     content_holder = ui.column().classes("w-full px-4")
 

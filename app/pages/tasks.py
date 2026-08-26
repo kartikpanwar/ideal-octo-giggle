@@ -5,8 +5,11 @@ from __future__ import annotations
 from nicegui import ui
 
 from app.db import get_session
-from app.models import TASK_STATUSES, Task
+from app.models import TASK_PRIORITIES, TASK_STATUSES, Task
 from app.pages.common import (
+    PRIORITY_BADGE_SLOT,
+    PRIORITY_COLOR_FALLBACK,
+    PRIORITY_COLORS,
     STATUS_BADGE_SLOT,
     STATUS_COLOR_FALLBACK,
     STATUS_COLORS,
@@ -26,6 +29,7 @@ COLUMNS = [
     {"name": "assignee", "label": "Assignee", "field": "assignee", "align": "left"},
     {"name": "workstream", "label": "Workstream", "field": "workstream", "align": "left"},
     {"name": "status", "label": "Status", "field": "status", "align": "left"},
+    {"name": "priority", "label": "Priority", "field": "priority", "align": "left"},
     {"name": "estimated_effort_weeks", "label": "Effort (wks)", "field": "estimated_effort_weeks"},
     {"name": "estimated_start", "label": "Est. start", "field": "estimated_start"},
     {"name": "estimated_end", "label": "Est. end", "field": "estimated_end"},
@@ -50,6 +54,8 @@ def _load_rows() -> list[dict]:
                 "workstream": workstreams.get(t.workstream_id, ""),
                 "status": t.status,
                 "status_color": STATUS_COLORS.get(t.status, STATUS_COLOR_FALLBACK),
+                "priority": t.priority,
+                "priority_color": PRIORITY_COLORS.get(t.priority, PRIORITY_COLOR_FALLBACK),
                 "estimated_effort_weeks": t.estimated_effort_weeks,
                 "estimated_start": fmt_date(t.estimated_start),
                 "estimated_end": fmt_date(t.estimated_end),
@@ -60,7 +66,7 @@ def _load_rows() -> list[dict]:
         ]
 
 
-def _save(row_id, name, description, workstream_id, assignee_id, status, effort, start, end,
+def _save(row_id, name, description, workstream_id, assignee_id, status, priority, effort, start, end,
           actual_start, actual_end, status_update) -> None:
     with get_session() as session:
         is_new = row_id is None
@@ -74,6 +80,7 @@ def _save(row_id, name, description, workstream_id, assignee_id, status, effort,
         task.workstream_id = workstream_id
         task.assignee_id = assignee_id
         task.status = status
+        task.priority = priority
         task.estimated_effort_weeks = effort
         task.estimated_start = parse_date(start)
         task.estimated_end = parse_date(end)
@@ -117,6 +124,7 @@ def build() -> None:
             rows = _apply_filters(_load_rows())
             table = ui.table(columns=COLUMNS, rows=rows, row_key="id").classes("w-full")
             table.add_slot("body-cell-status", STATUS_BADGE_SLOT)
+            table.add_slot("body-cell-priority", PRIORITY_BADGE_SLOT)
             table.add_slot(
                 "body-cell-actions",
                 '<q-td :props="props">'
@@ -160,6 +168,7 @@ def build() -> None:
             workstream = ui.select(workstream_options(), label="Workstream", value=row.get("workstream_id"), with_input=True).classes("w-full")
             assignee = ui.select(member_options(), label="Assignee", value=row.get("assignee_id"), with_input=True).classes("w-full")
             status = ui.select(TASK_STATUSES, label="Status", value=row.get("status", "not_started")).classes("w-full")
+            priority = ui.select(TASK_PRIORITIES, label="Priority", value=row.get("priority", "medium")).classes("w-full")
             effort = ui.number("Estimated effort (weeks)", value=row.get("estimated_effort_weeks"), step=0.5)
             start = ui.input("Est. start (YYYY-MM-DD)", value=row.get("estimated_start", "")).classes("w-full")
             end = ui.input("Est. end (YYYY-MM-DD)", value=row.get("estimated_end", "")).classes("w-full")
@@ -176,7 +185,7 @@ def build() -> None:
                     ui.notify("Name is required", type="negative")
                     return
                 _save(row.get("id"), name.value.strip(), description.value, workstream.value,
-                      assignee.value, status.value, effort.value, start.value, end.value,
+                      assignee.value, status.value, priority.value, effort.value, start.value, end.value,
                       actual_start.value, actual_end.value, status_update.value)
                 dialog.close()
                 refresh()
