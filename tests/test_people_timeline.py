@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 
 from app.pages.people import build_person_timeline_options
+
+
+def _epoch_ms(d: date) -> int:
+    return int(datetime(d.year, d.month, d.day, tzinfo=timezone.utc).timestamp() * 1000)
 
 
 def _task(name, est_start=None, est_end=None, act_start=None, act_end=None,
@@ -42,10 +46,12 @@ def test_actual_only_task_has_no_estimated_bar():
 
 
 def test_timeline_start_uses_earliest_of_either_kind():
-    # Actual start (Sep 1) is earlier than the estimated start (Sep 5).
+    # Actual start (Sep 1) is earlier than the estimated start (Sep 5), so the
+    # axis's day-0 reference (baked into the axisLabel formatter) should be Sep 1.
     tasks = [_task("A", date(2026, 9, 5), date(2026, 9, 12), date(2026, 9, 1), date(2026, 9, 10))]
     options = build_person_timeline_options(tasks)
-    assert "Days from 2026-09-01" in options["xAxis"]["name"]
+    formatter = options["xAxis"]["axisLabel"][":formatter"]
+    assert str(_epoch_ms(date(2026, 9, 1))) in formatter
     est_offset = options["series"][0]["data"][0]
     act_offset = options["series"][2]["data"][0]
     assert est_offset == 4  # Sep 5 - Sep 1

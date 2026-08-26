@@ -171,10 +171,22 @@ extends the same technique to compare **estimated vs. actual** dates per task:
 two distinct `stack` groups ("est", "act") on the same category axis render as
 grouped bars — a full-width bar coloured by status, and a thinner fixed-colour
 bar alongside it — with `None` entries where a task is missing one of the two
-date pairs so its bar simply doesn't render. `STATUS_COLORS` lives in
-[app/pages/common.py](../app/pages/common.py) since it's now used by both
+date pairs so its bar simply doesn't render. `STATUS_COLORS` and
+`month_year_axis_label()` both live in
+[app/pages/common.py](../app/pages/common.py) since they're now used by both
 timelines — a concrete instance of "promote to `common.py` only once two pages
 actually need it," not before.
+
+`month_year_axis_label()` is also the project's one deliberate use of embedded
+JS in a chart: a numeric 'value' xAxis (which the offset/duration stacking
+technique requires) has no native date-aware tick formatting, so it bakes a
+small formatter function — via NiceGUI's `":"` dynamic-property convention —
+that adds each tick's day offset to a reference date and renders "MMM-YY".
+Two things matter if you touch it: use only `getUTC*`/`setUTC*` Date methods
+(local-time methods would make the label depend on the *viewer's* browser
+timezone, not the server's), and keep `minInterval: 31` — no month has more
+than 31 days, so that's what guarantees two consecutive ticks never land in
+the same month and repeat a label.
 
 - Build the `options` dict from data already assembled by an `app/services.py`
   function (e.g. `capacity_summary()`) — never query the DB inside a chart

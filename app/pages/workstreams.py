@@ -12,6 +12,7 @@ from app.pages.common import (
     STATUS_COLORS,
     fmt_date,
     member_options,
+    month_year_axis_label,
     parse_date,
     strategy_options,
 )
@@ -121,10 +122,7 @@ def build_timeline_options(tasks: list[dict]) -> dict | None:
         "grid": {"left": "22%", "right": "6%", "top": "6%", "bottom": "14%", "containLabel": True},
         "xAxis": {
             "type": "value",
-            "name": f"Days from {fmt_date(timeline_start)}",
-            "nameLocation": "middle",
-            "nameGap": 28,
-            "axisLabel": {"formatter": "{value}d"},
+            **month_year_axis_label(timeline_start),
         },
         "yAxis": {"type": "category", "inverse": True, "data": names},
         "series": [

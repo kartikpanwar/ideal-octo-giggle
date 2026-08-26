@@ -8,7 +8,7 @@ from sqlalchemy.orm import joinedload
 
 from app.db import get_session
 from app.models import TASK_STATUSES, Task, TeamMember
-from app.pages.common import STATUS_COLORS, fmt_date
+from app.pages.common import STATUS_COLORS, fmt_date, month_year_axis_label
 from app.pages.layout import header
 
 # Fixed styling for the "actual" bar, distinct from the status-coloured
@@ -145,10 +145,7 @@ def build_person_timeline_options(tasks: list[dict]) -> dict | None:
         "grid": {"left": "22%", "right": "6%", "top": "6%", "bottom": "14%", "containLabel": True},
         "xAxis": {
             "type": "value",
-            "name": f"Days from {fmt_date(timeline_start)}",
-            "nameLocation": "middle",
-            "nameGap": 28,
-            "axisLabel": {"formatter": "{value}d"},
+            **month_year_axis_label(timeline_start),
         },
         "yAxis": {"type": "category", "inverse": True, "data": names},
         "series": [
