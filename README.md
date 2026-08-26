@@ -30,9 +30,10 @@ Then open http://localhost:8080.
 ## Pages
 
 - **Home** (`/`) — a KPI row (tasks in progress/blocked, active workstreams, people
-  over-allocated) followed by the capacity-vs-estimate overview per person (available vs.
-  workstream allocation vs. open task estimates, with an over-allocation flag). Reserved
-  for more visualisations later.
+  over-allocated) followed by a **workstream x person grid**: workstreams as rows, people
+  as columns, each cell coloured by that person's total *open* (not done/cancelled)
+  estimated effort on tasks in that workstream — an at-a-glance "who's working on what".
+  Reserved for more visualisations later.
 - **People / Strategy / Workstreams / Tasks** — create and amend records. Tasks can be
   filtered by workstream, person, and status. Every status column (Strategy, Workstreams,
   Tasks) renders as a coloured dot + label rather than plain text, using a shared
@@ -64,11 +65,13 @@ app/
   pages/      # home, people, strategy, workstreams, tasks, capacity
 data/         # seed CSVs (incl. capacity_period, team_member_capacity, workstream_allocation,
               # and estimate_history with a few sample estimate revisions)
-tests/        # seed round-trip, history logging, capacity summary, timeline & heatmap builders
+tests/        # seed round-trip, history logging, capacity/KPI summaries, timeline & heatmap builders
 ```
 
 ## Notes
 
 Task effort is a single per-task total (`estimated_effort_weeks`); it is not yet phased
-across periods, so the capacity-vs-estimate overview compares period-summed availability
-and allocation against total open task effort per person.
+across periods. `capacity_summary()` (behind Home's "people over-allocated" KPI) compares
+period-summed availability/allocation against *total* open task effort per person rather
+than per period, and the People page's weekly heatmap approximates a weekly figure by
+spreading each task's total evenly across the calendar weeks it spans.

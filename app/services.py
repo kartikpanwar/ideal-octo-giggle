@@ -128,6 +128,45 @@ def kpi_summary(session: Session) -> dict:
     }
 
 
+def workstream_assignments(session: Session) -> list[dict]:
+    """Per (workstream, person) pair: total open estimated effort and which
+    tasks contribute, for the Home page's workstream x person grid.
+
+    Only tasks with both an assignee and a workstream, and not done/cancelled
+    (see CLOSED_STATUSES), are counted — this is *current* workload
+    distribution, not a historical/completed record.
+
+    Returns: list of {"workstream_id", "person_id", "effort_weeks",
+    "task_count", "task_names"}.
+    """
+    tasks = (
+        session.query(Task)
+        .filter(Task.assignee_id.isnot(None))
+        .filter(Task.workstream_id.isnot(None))
+        .filter(Task.status.notin_(CLOSED_STATUSES))
+        .all()
+    )
+
+    agg: dict[tuple[int, int], dict] = {}
+    for task in tasks:
+        key = (task.workstream_id, task.assignee_id)
+        entry = agg.setdefault(key, {"effort_weeks": 0.0, "task_count": 0, "task_names": []})
+        entry["effort_weeks"] += task.estimated_effort_weeks or 0.0
+        entry["task_count"] += 1
+        entry["task_names"].append(task.name)
+
+    return [
+        {
+            "workstream_id": workstream_id,
+            "person_id": person_id,
+            "effort_weeks": round(v["effort_weeks"], 2),
+            "task_count": v["task_count"],
+            "task_names": v["task_names"],
+        }
+        for (workstream_id, person_id), v in agg.items()
+    ]
+
+
 def _iso_weeks_between(start: date, end: date) -> list[date]:
     """Monday date of every distinct ISO calendar week between start and end
     (inclusive), in order. Order is swapped if end < start."""

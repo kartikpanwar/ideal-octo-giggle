@@ -215,6 +215,21 @@ value that exceeds `max` is fragile (it defaults to a washed-out grey rather
 than the intended "hot" colour), so clamp the value going into the chart
 instead of trusting the visualMap boundary.
 
+[app/pages/home.py](../app/pages/home.py)'s
+`build_workstream_person_grid_options()` is the same heatmap pattern with two
+differences worth noting if you build a fourth one: when the value has no
+natural ceiling to clamp against (effort-weeks here, vs. a % that clamps at a
+fixed `HEATMAP_MAX`), compute `visualMap.max` from the actual data instead
+(`max(1, ceil(max(values)))` — the floor of 1 avoids a degenerate 0-0 scale
+when nothing has any effort yet); and its axes are transposed on purpose
+(people as `xAxis` columns, the grouping entity — workstreams — as `yAxis`
+rows) to match how the feature was asked for, whereas the People page's own
+heatmap put people on `yAxis`. There's no fixed rule for which entity goes on
+which axis — pick whichever reads as "columns vs. rows" the way the request
+described it, and keep the `yAxis.inverse: True` convention (first row of the
+underlying table renders at the top) regardless of which entity that ends up
+being.
+
 - Build the `options` dict from data already assembled by an `app/services.py`
   function (e.g. `capacity_summary()`) — never query the DB inside a chart
   builder; keep the same page → services → db layering as everywhere else.

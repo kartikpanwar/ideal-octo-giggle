@@ -1,16 +1,19 @@
 """Home / landing page.
 
-Leads with a KPI row, then the capacity-vs-estimate overview. More
-visualisations will be added here later.
+Leads with a KPI row, then a workstream x person grid of who's working on
+what. More visualisations will be added here later.
 """
 
 from __future__ import annotations
 
+from math import ceil
+
 from nicegui import ui
 
 from app.db import get_session
+from app.models import TeamMember, Workstream
 from app.pages.layout import header
-from app.services import capacity_summary, kpi_summary
+from app.services import kpi_summary, workstream_assignments
 
 # (label, kpi_summary key, icon, colour) for the KPI row, in display order.
 KPI_TILES = [
@@ -20,14 +23,11 @@ KPI_TILES = [
     ("People over-allocated", "people_over_allocated", "warning", "#fb8c00"),
 ]
 
-COLUMNS = [
-    {"name": "name", "label": "Team member", "field": "name", "align": "left"},
-    {"name": "available", "label": "Available (wks)", "field": "available"},
-    {"name": "allocated", "label": "Allocated to workstreams (wks)", "field": "allocated"},
-    {"name": "estimated_open", "label": "Estimated open tasks (wks)", "field": "estimated_open"},
-    {"name": "remaining", "label": "Remaining (wks)", "field": "remaining"},
-    {"name": "flag", "label": "Status", "field": "flag", "align": "left"},
-]
+# Sequential blue scale for effort volume — deliberately distinct from the
+# People page's green->red allocation heatmap, since this isn't a danger
+# signal, just "how much".
+GRID_COLORS = ["#e3f2fd", "#90caf9", "#42a5f5", "#1976d2", "#0d47a1"]
+MAX_TOOLTIP_TASKS = 4
 
 
 def _kpi_tile(label: str, value: int, icon: str, color: str) -> None:
@@ -42,40 +42,131 @@ def _kpi_tile(label: str, value: int, icon: str, color: str) -> None:
                 ui.label(label).classes("text-xs text-gray-500")
 
 
+def _load_workstream_person_grid_data() -> tuple[list[dict], list[dict], list[dict]]:
+    with get_session() as session:
+        workstreams = [
+            {"id": w.id, "name": w.name}
+            for w in session.query(Workstream).order_by(Workstream.id).all()
+        ]
+        members = [
+            {"id": m.id, "name": m.name}
+            for m in session.query(TeamMember).order_by(TeamMember.name).all()
+        ]
+        rows = workstream_assignments(session)
+    return workstreams, members, rows
+
+
+def build_workstream_person_grid_options(
+    workstreams: list[dict], members: list[dict], rows: list[dict]
+) -> dict | None:
+    """People x workstream heatmap: cell = total *open* (not done/cancelled)
+    estimated effort (person-weeks) each person has on tasks in that
+    workstream — see app.services.workstream_assignments.
+
+    People are columns, workstreams are rows (yAxis inverse=True keeps the
+    first workstream at the top, matching the Workstreams table's order).
+    Builds a dense grid like the People page's allocation heatmap: every
+    workstream x every person gets a cell, defaulting to 0 where nobody has
+    an open assigned task there. The colour scale's max is the largest single
+    cell value actually present (rounded up), not a fixed cap, since effort
+    volume — unlike the % allocation heatmap — has no natural ceiling to clamp
+    against. Returns None when there's nothing to place.
+    """
+    if not rows or not workstreams or not members:
+        return None
+
+    ws_index = {w["id"]: i for i, w in enumerate(workstreams)}
+    member_index = {m["id"]: i for i, m in enumerate(members)}
+    by_key = {(r["workstream_id"], r["person_id"]): r for r in rows}
+
+    heat_max = max(1, ceil(max((r["effort_weeks"] for r in rows), default=0.0)))
+
+    data = []
+    for ws in workstreams:
+        for member in members:
+            entry = by_key.get((ws["id"], member["id"]))
+            effort = entry["effort_weeks"] if entry else 0.0
+            task_count = entry["task_count"] if entry else 0
+            names = entry["task_names"] if entry else []
+
+            tooltip = f"{member['name']}\n{ws['name']}\n{effort:g} wks open · {task_count} task(s)"
+            if names:
+                shown = names[:MAX_TOOLTIP_TASKS]
+                extra = len(names) - len(shown)
+                task_lines = "\n".join(f"- {n}" for n in shown)
+                if extra > 0:
+                    task_lines += f"\n+ {extra} more"
+                tooltip += f"\n{task_lines}"
+
+            data.append(
+                {
+                    "value": [member_index[member["id"]], ws_index[ws["id"]], min(effort, heat_max)],
+                    "name": tooltip,
+                }
+            )
+
+    return {
+        "tooltip": {
+            "trigger": "item",
+            "formatter": "{b}",
+            "extraCssText": "text-align:left; white-space:pre-line; max-width:260px;",
+        },
+        "grid": {"left": "16%", "right": "4%", "top": "10%", "bottom": "12%", "containLabel": True},
+        "xAxis": {
+            "type": "category",
+            "data": [m["name"] for m in members],
+            "splitArea": {"show": True},
+        },
+        "yAxis": {
+            "type": "category",
+            "inverse": True,
+            "data": [w["name"] for w in workstreams],
+            "splitArea": {"show": True},
+        },
+        "visualMap": {
+            "min": 0,
+            "max": heat_max,
+            "calculable": True,
+            "orient": "horizontal",
+            "left": "center",
+            "top": "0",
+            "inRange": {"color": GRID_COLORS},
+        },
+        "series": [
+            {
+                "type": "heatmap",
+                "data": data,
+                "label": {"show": False},
+                "emphasis": {"itemStyle": {"borderColor": "#333", "borderWidth": 1}},
+            }
+        ],
+    }
+
+
 def build() -> None:
     header("Home")
 
     with get_session() as session:
         kpis = kpi_summary(session)
-        summary = capacity_summary(session)
-
-    rows = [
-        {
-            **row,
-            "flag": "Over-allocated" if row["over_allocated"] else "OK",
-        }
-        for row in summary
-    ]
 
     with ui.column().classes("w-full p-4 gap-4"):
         with ui.row().classes("w-full gap-4 flex-wrap"):
             for label, key, icon, color in KPI_TILES:
                 _kpi_tile(label, kpis[key], icon, color)
 
-        ui.label("Capacity overview").classes("text-2xl font-bold")
+        ui.label("Who's working on what").classes("text-2xl font-bold")
         ui.label(
-            "Available capacity vs. workstream allocation vs. open task estimates, "
-            "per person (person-weeks, summed across all periods)."
+            "Open task effort (person-weeks) each person has per workstream — "
+            "done and cancelled tasks aren't counted."
         ).classes("text-sm text-gray-500")
 
-        table = ui.table(columns=COLUMNS, rows=rows, row_key="name").classes("w-full")
-        # Colour the status cell red when over-allocated.
-        table.add_slot(
-            "body-cell-flag",
-            '<q-td :props="props">'
-            '<q-badge :color="props.value === \'Over-allocated\' ? \'red\' : \'green\'">'
-            "{{ props.value }}</q-badge></q-td>",
-        )
+        workstreams, members, assignment_rows = _load_workstream_person_grid_data()
+        grid_options = build_workstream_person_grid_options(workstreams, members, assignment_rows)
+        if grid_options is None:
+            ui.label("No open, assigned tasks yet.").classes("text-sm text-gray-500")
+        else:
+            chart_height = max(280, 45 * len(workstreams) + 140)
+            ui.echart(grid_options).classes("w-full").style(f"height: {chart_height}px")
 
         ui.separator()
         with ui.card().classes("w-full bg-blue-50"):
