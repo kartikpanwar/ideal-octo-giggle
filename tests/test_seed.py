@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.models import (
     Base,
     CapacityPeriod,
+    EstimateHistory,
     StrategyItem,
     Task,
     TeamMember,
@@ -24,6 +25,7 @@ def _counts(session):
         "periods": session.query(CapacityPeriod).count(),
         "availability": session.query(TeamMemberCapacity).count(),
         "allocations": session.query(WorkstreamAllocation).count(),
+        "history": session.query(EstimateHistory).count(),
     }
 
 
@@ -41,6 +43,7 @@ def test_load_seed_data(session):
     assert counts["tasks"] >= 1
     assert counts["periods"] >= 1
     assert counts["allocations"] >= 1
+    assert counts["history"] >= 1
 
 
 def test_roundtrip(session, tmp_path):

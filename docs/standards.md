@@ -188,6 +188,19 @@ timezone, not the server's), and keep `minInterval: 31` — no month has more
 than 31 days, so that's what guarantees two consecutive ticks never land in
 the same month and repeat a label.
 
+[app/pages/people.py](../app/pages/people.py)'s
+`build_allocation_heatmap_options()` is a third pattern: a plain (non-Gantt)
+ECharts `heatmap` series on category x/y axes — one row per person, one
+column per calendar week, cell coloured by `app.services.weekly_allocation()`.
+Two things worth reusing: it builds a **dense grid** (every person x every
+week gets a cell, defaulting to 0 where the service returned nothing) so the
+chart is rectangular even though the underlying data is sparse; and it
+**clamps the cell's colour value** (`min(pct, HEATMAP_MAX)`) while leaving the
+*tooltip* text uncapped — relying on `visualMap`'s `outOfRange` styling for a
+value that exceeds `max` is fragile (it defaults to a washed-out grey rather
+than the intended "hot" colour), so clamp the value going into the chart
+instead of trusting the visualMap boundary.
+
 - Build the `options` dict from data already assembled by an `app/services.py`
   function (e.g. `capacity_summary()`) — never query the DB inside a chart
   builder; keep the same page → services → db layering as everywhere else.

@@ -1,7 +1,10 @@
-"""People (team member) CRUD page, plus a per-person task timeline (ECharts)
-comparing estimated vs. actual dates — see docs/standards.md."""
+"""People (team member) CRUD page, plus two ECharts visualisations:
+a per-person task timeline comparing estimated vs. actual dates, and a
+week x person weekly-allocation heatmap — see docs/standards.md."""
 
 from __future__ import annotations
+
+from datetime import date
 
 from nicegui import ui
 from sqlalchemy.orm import joinedload
@@ -10,10 +13,15 @@ from app.db import get_session
 from app.models import TASK_STATUSES, Task, TeamMember
 from app.pages.common import STATUS_COLORS, fmt_date, month_year_axis_label
 from app.pages.layout import header
+from app.services import weekly_allocation
 
 # Fixed styling for the "actual" bar, distinct from the status-coloured
 # "estimated" bar so the two read as different series, not different statuses.
 ACTUAL_BAR_COLOR = "#37474f"
+
+# Cell colour clamps at this %; the tooltip still shows the true, uncapped
+# value so a single wildly over-allocated week doesn't wash out the scale.
+HEATMAP_MAX = 120
 
 COLUMNS = [
     {"name": "id", "label": "ID", "field": "id", "align": "left"},
@@ -176,6 +184,89 @@ def _present_statuses(tasks: list[dict]) -> list[str]:
     return [s for s in TASK_STATUSES if any(t["status"] == s for t in tasks)]
 
 
+def _load_allocation_heatmap_data() -> tuple[list[dict], list[dict]]:
+    with get_session() as session:
+        members = [
+            {"id": m.id, "name": m.name}
+            for m in session.query(TeamMember).order_by(TeamMember.name).all()
+        ]
+        rows = weekly_allocation(session)
+    return members, rows
+
+
+def _week_label(d: date) -> str:
+    return f"{d.strftime('%b')} {d.day}"
+
+
+def build_allocation_heatmap_options(members: list[dict], rows: list[dict]) -> dict | None:
+    """Week x person heatmap of % weekly capacity allocation, from
+    app.services.weekly_allocation.
+
+    Builds a dense grid: every member in `members` gets a cell for every week
+    present in `rows` (the shared range across everyone's tasks), defaulting
+    to 0% where a member has no dated, estimated task that week — so the grid
+    is rectangular even though `weekly_allocation` only returns rows that
+    actually have a task contributing. Returns None when there's no data to
+    place (no member has any dated, estimated task).
+    """
+    if not rows or not members:
+        return None
+
+    weeks = sorted({r["week_start"] for r in rows})
+    week_index = {w: i for i, w in enumerate(weeks)}
+    member_index = {m["id"]: i for i, m in enumerate(members)}
+    by_key = {(r["member_id"], r["week_start"]): r["pct"] for r in rows}
+
+    data = []
+    for member in members:
+        for week in weeks:
+            pct = by_key.get((member["id"], week), 0.0)
+            data.append(
+                {
+                    "value": [week_index[week], member_index[member["id"]], min(pct, HEATMAP_MAX)],
+                    "name": f"{member['name']}\nWeek of {_week_label(week)}\n{pct:.0f}% allocated",
+                }
+            )
+
+    return {
+        "tooltip": {
+            "trigger": "item",
+            "formatter": "{b}",
+            "extraCssText": "text-align:left; white-space:pre-line; max-width:220px;",
+        },
+        "grid": {"left": "12%", "right": "4%", "top": "18%", "bottom": "16%", "containLabel": True},
+        "xAxis": {
+            "type": "category",
+            "data": [_week_label(w) for w in weeks],
+            "splitArea": {"show": True},
+            "axisLabel": {"rotate": 45},
+        },
+        "yAxis": {
+            "type": "category",
+            "inverse": True,  # so the first member (top of the People table) renders at the top
+            "data": [m["name"] for m in members],
+            "splitArea": {"show": True},
+        },
+        "visualMap": {
+            "min": 0,
+            "max": HEATMAP_MAX,
+            "calculable": True,
+            "orient": "horizontal",
+            "left": "center",
+            "top": "0",
+            "inRange": {"color": ["#e8f5e9", "#a5d6a7", "#66bb6a", "#fdd835", "#fb8c00", "#c62828"]},
+        },
+        "series": [
+            {
+                "type": "heatmap",
+                "data": data,
+                "label": {"show": False},
+                "emphasis": {"itemStyle": {"borderColor": "#333", "borderWidth": 1}},
+            }
+        ],
+    }
+
+
 def _save(row_id: int | None, name, email, role, hours, active) -> None:
     with get_session() as session:
         person = session.get(TeamMember, row_id) if row_id else TeamMember()
@@ -284,3 +375,18 @@ def build() -> None:
         ui.button("Add person", icon="add", on_click=lambda: open_form())
 
     refresh()
+
+    ui.separator().classes("my-2")
+    with ui.column().classes("w-full p-4 gap-2"):
+        ui.label("Weekly allocation").classes("text-xl font-bold")
+        ui.label(
+            "% of each person's weekly capacity consumed by estimated task effort, "
+            "spread evenly across each task's date range."
+        ).classes("text-sm text-gray-500")
+        heatmap_members, heatmap_rows = _load_allocation_heatmap_data()
+        heatmap_options = build_allocation_heatmap_options(heatmap_members, heatmap_rows)
+        if heatmap_options is None:
+            ui.label("No tasks with estimated dates and effort yet.").classes("text-sm text-gray-500")
+        else:
+            chart_height = max(280, 55 * len(heatmap_members) + 140)
+            ui.echart(heatmap_options).classes("w-full").style(f"height: {chart_height}px")

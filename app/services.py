@@ -5,7 +5,7 @@ Kept UI-agnostic so they can be unit-tested directly.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -21,6 +21,11 @@ from app.models import (
 
 # Task statuses that no longer consume remaining capacity.
 CLOSED_STATUSES = ("done", "cancelled")
+
+# Hours/week treated as "full-time" (1.0) when converting a member's
+# default_weekly_hours into a capacity fraction. Members without a value set
+# are assumed full-time.
+STANDARD_WEEKLY_HOURS = 40.0
 
 
 def record_status_change(
@@ -110,6 +115,78 @@ def capacity_summary(session: Session) -> list[dict]:
             }
         )
     return rows
+
+
+def _iso_weeks_between(start: date, end: date) -> list[date]:
+    """Monday date of every distinct ISO calendar week between start and end
+    (inclusive), in order. Order is swapped if end < start."""
+    if end < start:
+        start, end = end, start
+    weeks: list[date] = []
+    seen: set[tuple[int, int]] = set()
+    current = start
+    while current <= end:
+        iso_year, iso_week, _ = current.isocalendar()
+        key = (iso_year, iso_week)
+        if key not in seen:
+            seen.add(key)
+            weeks.append(date.fromisocalendar(iso_year, iso_week, 1))
+        current += timedelta(days=1)
+    return weeks
+
+
+def weekly_allocation(session: Session) -> list[dict]:
+    """Weekly % capacity allocation per team member, for the People page's
+    allocation heatmap.
+
+    Each dated task's estimated_effort_weeks (a single total, not phased per
+    period — see docs/architecture.md's known constraints) is spread evenly
+    across the ISO calendar weeks between its estimated_start and
+    estimated_end, then summed per member per week. Dividing by the member's
+    weekly capacity fraction (default_weekly_hours / 40, defaulting to
+    full-time when unset) converts that into a percentage — a week where a
+    member's tasks sum to exactly their weekly capacity is 100%.
+
+    Tasks missing an assignee, a full date pair, or an effort estimate are
+    skipped (their load can't be placed). Only (member, week) combinations
+    with at least one contributing task are returned — the caller is
+    responsible for filling in the full member x week grid if it wants a
+    dense heatmap.
+
+    Returns: list of {"member_id", "week_start" (that week's Monday), "pct"}.
+    """
+    tasks = (
+        session.query(Task)
+        .filter(Task.assignee_id.isnot(None))
+        .filter(Task.estimated_start.isnot(None))
+        .filter(Task.estimated_end.isnot(None))
+        .filter(Task.estimated_effort_weeks.isnot(None))
+        .all()
+    )
+
+    load: dict[tuple[int, date], float] = {}
+    for task in tasks:
+        weeks = _iso_weeks_between(task.estimated_start, task.estimated_end)
+        if not weeks:
+            continue
+        share = task.estimated_effort_weeks / len(weeks)
+        for week_start in weeks:
+            key = (task.assignee_id, week_start)
+            load[key] = load.get(key, 0.0) + share
+
+    capacity_fraction = {
+        m.id: (m.default_weekly_hours or STANDARD_WEEKLY_HOURS) / STANDARD_WEEKLY_HOURS
+        for m in session.query(TeamMember).all()
+    }
+
+    return [
+        {
+            "member_id": member_id,
+            "week_start": week_start,
+            "pct": round((weekly_load / capacity_fraction.get(member_id, 1.0)) * 100, 1),
+        }
+        for (member_id, week_start), weekly_load in load.items()
+    ]
 
 
 def record_task_change(

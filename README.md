@@ -36,6 +36,9 @@ Then open http://localhost:8080.
   filtered by workstream, person, and status. Each **person** row has a **timeline** view
   comparing estimated vs. actual dates across their tasks; each **workstream** row has a
   timeline of its constituent tasks' estimated dates — both are ECharts Gantt-style charts.
+  The People page also has a **weekly allocation heatmap**: one row per person, one column
+  per calendar week, coloured by % of that week's capacity consumed by estimated task
+  effort (spread evenly across each task's date range).
 - **Capacity** (`/capacity`) — tabbed CRUD for planning periods, per-member availability,
   and workstream allocations.
 - **Export to CSV** (header button) — write the in-memory DB back to `data/*.csv`.
@@ -56,8 +59,9 @@ app/
   services.py # estimate_history logging helpers
   main.py     # NiceGUI entrypoint + page routes
   pages/      # home, people, strategy, workstreams, tasks, capacity
-data/         # seed CSVs (incl. capacity_period, team_member_capacity, workstream_allocation)
-tests/        # seed round-trip, history logging, capacity summary, timeline chart builders
+data/         # seed CSVs (incl. capacity_period, team_member_capacity, workstream_allocation,
+              # and estimate_history with a few sample estimate revisions)
+tests/        # seed round-trip, history logging, capacity summary, timeline & heatmap builders
 ```
 
 ## Notes
