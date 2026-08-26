@@ -6,7 +6,15 @@ from nicegui import ui
 
 from app.db import get_session
 from app.models import TASK_STATUSES, Task
-from app.pages.common import fmt_date, member_options, parse_date, workstream_options
+from app.pages.common import (
+    STATUS_BADGE_SLOT,
+    STATUS_COLOR_FALLBACK,
+    STATUS_COLORS,
+    fmt_date,
+    member_options,
+    parse_date,
+    workstream_options,
+)
 from app.pages.layout import header
 from app.services import record_task_change, task_history
 
@@ -39,6 +47,7 @@ def _load_rows() -> list[dict]:
                 "workstream_id": t.workstream_id,
                 "workstream": workstreams.get(t.workstream_id, ""),
                 "status": t.status,
+                "status_color": STATUS_COLORS.get(t.status, STATUS_COLOR_FALLBACK),
                 "estimated_effort_weeks": t.estimated_effort_weeks,
                 "estimated_start": fmt_date(t.estimated_start),
                 "estimated_end": fmt_date(t.estimated_end),
@@ -97,6 +106,7 @@ def build() -> None:
         with table_holder:
             rows = _apply_filters(_load_rows())
             table = ui.table(columns=COLUMNS, rows=rows, row_key="id").classes("w-full")
+            table.add_slot("body-cell-status", STATUS_BADGE_SLOT)
             table.add_slot(
                 "body-cell-actions",
                 '<q-td :props="props">'

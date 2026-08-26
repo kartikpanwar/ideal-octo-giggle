@@ -6,7 +6,14 @@ from nicegui import ui
 
 from app.db import get_session
 from app.models import STRATEGY_STATUSES, StrategyItem
-from app.pages.common import fmt_date, member_options, parse_date
+from app.pages.common import (
+    STATUS_BADGE_SLOT,
+    STATUS_COLOR_FALLBACK,
+    STATUS_COLORS,
+    fmt_date,
+    member_options,
+    parse_date,
+)
 from app.pages.layout import header
 
 COLUMNS = [
@@ -30,6 +37,7 @@ def _load_rows() -> list[dict]:
                 "name": s.name,
                 "description": s.description,
                 "status": s.status,
+                "status_color": STATUS_COLORS.get(s.status, STATUS_COLOR_FALLBACK),
                 "priority": s.priority,
                 "owner_id": s.owner_id,
                 "owner": owners.get(s.owner_id, ""),
@@ -62,6 +70,7 @@ def build() -> None:
         table_holder.clear()
         with table_holder:
             table = ui.table(columns=COLUMNS, rows=_load_rows(), row_key="id").classes("w-full")
+            table.add_slot("body-cell-status", STATUS_BADGE_SLOT)
             table.add_slot(
                 "body-cell-actions",
                 '<q-td :props="props"><q-btn dense flat icon="edit" '

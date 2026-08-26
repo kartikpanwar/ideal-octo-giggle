@@ -1,5 +1,5 @@
 """Small helpers shared across CRUD pages: date parsing, FK option lists, and
-the task-status colour map used by the timeline charts (workstreams + people)."""
+the status colour map + table badge slot used on every status column."""
 
 from __future__ import annotations
 
@@ -8,14 +8,33 @@ from datetime import date, datetime, timezone
 from app.db import get_session
 from app.models import CapacityPeriod, StrategyItem, TeamMember, Workstream
 
-# Status -> colour, shared by every timeline/status visualisation.
+# Status -> colour, covering both the task/workstream vocabulary
+# (not_started, in_progress, blocked, done, cancelled) and the strategy item
+# one (proposed, active, on_hold, done, cancelled) — shared by the timeline
+# charts and every status table column.
 STATUS_COLORS = {
     "not_started": "#9e9e9e",
     "in_progress": "#1976d2",
     "blocked": "#e53935",
     "done": "#43a047",
     "cancelled": "#bdbdbd",
+    "proposed": "#90a4ae",
+    "active": "#1976d2",
+    "on_hold": "#fb8c00",
 }
+STATUS_COLOR_FALLBACK = "#9e9e9e"
+
+# body-cell-status slot for a ui.table: a coloured dot + the status text.
+# Requires each row dict to carry a "status_color" field (e.g.
+# STATUS_COLORS.get(row["status"], STATUS_COLOR_FALLBACK)) alongside "status".
+STATUS_BADGE_SLOT = (
+    '<q-td :props="props">'
+    '<div class="row items-center no-wrap" style="gap:6px">'
+    "<div :style=\"'background-color:' + props.row.status_color + "
+    "'; width:10px; height:10px; border-radius:50%; flex-shrink:0;'\"></div>"
+    "<span>{{ props.row.status }}</span>"
+    "</div></q-td>"
+)
 
 
 def parse_date(value: str | None) -> date | None:

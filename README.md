@@ -29,16 +29,19 @@ Then open http://localhost:8080.
 
 ## Pages
 
-- **Home** (`/`) — capacity-vs-estimate overview per person (available vs. workstream
-  allocation vs. open task estimates, with an over-allocation flag). Reserved for more
-  visualisations later.
+- **Home** (`/`) — a KPI row (tasks in progress/blocked, active workstreams, people
+  over-allocated) followed by the capacity-vs-estimate overview per person (available vs.
+  workstream allocation vs. open task estimates, with an over-allocation flag). Reserved
+  for more visualisations later.
 - **People / Strategy / Workstreams / Tasks** — create and amend records. Tasks can be
-  filtered by workstream, person, and status. Each **person** row has a **timeline** view
-  comparing estimated vs. actual dates across their tasks; each **workstream** row has a
-  timeline of its constituent tasks' estimated dates — both are ECharts Gantt-style charts.
-  The People page also has a **weekly allocation heatmap**: one row per person, one column
-  per calendar week, coloured by % of that week's capacity consumed by estimated task
-  effort (spread evenly across each task's date range).
+  filtered by workstream, person, and status. Every status column (Strategy, Workstreams,
+  Tasks) renders as a coloured dot + label rather than plain text, using a shared
+  status → colour map. Each **person** row has a **timeline** view comparing estimated vs.
+  actual dates across their tasks; each **workstream** row has a timeline of its
+  constituent tasks' estimated dates — both are ECharts Gantt-style charts. The People page
+  also has a **weekly allocation heatmap**: one row per person, one column per calendar
+  week, coloured by % of that week's capacity consumed by estimated task effort (spread
+  evenly across each task's date range).
 - **Capacity** (`/capacity`) — tabbed CRUD for planning periods, per-member availability,
   and workstream allocations.
 - **Export to CSV** (header button) — write the in-memory DB back to `data/*.csv`.

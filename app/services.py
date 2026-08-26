@@ -15,6 +15,7 @@ from app.models import (
     Task,
     TeamMember,
     TeamMemberCapacity,
+    Workstream,
     WorkstreamAllocation,
     _utcnow,
 )
@@ -115,6 +116,16 @@ def capacity_summary(session: Session) -> list[dict]:
             }
         )
     return rows
+
+
+def kpi_summary(session: Session) -> dict:
+    """Small headline counts for the Home page's KPI row."""
+    return {
+        "tasks_in_progress": session.query(Task).filter(Task.status == "in_progress").count(),
+        "tasks_blocked": session.query(Task).filter(Task.status == "blocked").count(),
+        "workstreams_active": session.query(Workstream).filter(Workstream.status == "in_progress").count(),
+        "people_over_allocated": sum(1 for row in capacity_summary(session) if row["over_allocated"]),
+    }
 
 
 def _iso_weeks_between(start: date, end: date) -> list[date]:

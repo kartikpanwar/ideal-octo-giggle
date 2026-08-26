@@ -1,7 +1,7 @@
 """Home / landing page.
 
-Hosts the capacity-vs-estimate overview as its first widget. More visualisations
-will be added here later.
+Leads with a KPI row, then the capacity-vs-estimate overview. More
+visualisations will be added here later.
 """
 
 from __future__ import annotations
@@ -10,7 +10,15 @@ from nicegui import ui
 
 from app.db import get_session
 from app.pages.layout import header
-from app.services import capacity_summary
+from app.services import capacity_summary, kpi_summary
+
+# (label, kpi_summary key, icon, colour) for the KPI row, in display order.
+KPI_TILES = [
+    ("Tasks in progress", "tasks_in_progress", "play_circle", "#1976d2"),
+    ("Tasks blocked", "tasks_blocked", "block", "#e53935"),
+    ("Active workstreams", "workstreams_active", "timeline", "#43a047"),
+    ("People over-allocated", "people_over_allocated", "warning", "#fb8c00"),
+]
 
 COLUMNS = [
     {"name": "name", "label": "Team member", "field": "name", "align": "left"},
@@ -22,10 +30,23 @@ COLUMNS = [
 ]
 
 
+def _kpi_tile(label: str, value: int, icon: str, color: str) -> None:
+    with ui.card().classes("flex-1 min-w-[180px]"):
+        with ui.row().classes("items-center gap-3"):
+            with ui.element("div").classes("rounded-full flex items-center justify-center").style(
+                f"background-color:{color}1a; width:44px; height:44px; flex-shrink:0;"
+            ):
+                ui.icon(icon).style(f"color:{color}; font-size:24px;")
+            with ui.column().classes("gap-0"):
+                ui.label(str(value)).classes("text-2xl font-bold")
+                ui.label(label).classes("text-xs text-gray-500")
+
+
 def build() -> None:
     header("Home")
 
     with get_session() as session:
+        kpis = kpi_summary(session)
         summary = capacity_summary(session)
 
     rows = [
@@ -37,6 +58,10 @@ def build() -> None:
     ]
 
     with ui.column().classes("w-full p-4 gap-4"):
+        with ui.row().classes("w-full gap-4 flex-wrap"):
+            for label, key, icon, color in KPI_TILES:
+                _kpi_tile(label, kpis[key], icon, color)
+
         ui.label("Capacity overview").classes("text-2xl font-bold")
         ui.label(
             "Available capacity vs. workstream allocation vs. open task estimates, "

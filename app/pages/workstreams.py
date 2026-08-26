@@ -9,6 +9,8 @@ from sqlalchemy.orm import joinedload
 from app.db import get_session
 from app.models import TASK_STATUSES, WORKSTREAM_STATUSES, Task, Workstream
 from app.pages.common import (
+    STATUS_BADGE_SLOT,
+    STATUS_COLOR_FALLBACK,
     STATUS_COLORS,
     fmt_date,
     member_options,
@@ -42,6 +44,7 @@ def _load_rows() -> list[dict]:
                 "strategy_item_id": w.strategy_item_id,
                 "strategy": strategies.get(w.strategy_item_id, ""),
                 "status": w.status,
+                "status_color": STATUS_COLORS.get(w.status, STATUS_COLOR_FALLBACK),
                 "lead_id": w.lead_id,
                 "lead": leads.get(w.lead_id, ""),
                 "estimated_start": fmt_date(w.estimated_start),
@@ -172,6 +175,7 @@ def build() -> None:
         table_holder.clear()
         with table_holder:
             table = ui.table(columns=COLUMNS, rows=_load_rows(), row_key="id").classes("w-full")
+            table.add_slot("body-cell-status", STATUS_BADGE_SLOT)
             table.add_slot(
                 "body-cell-actions",
                 '<q-td :props="props">'

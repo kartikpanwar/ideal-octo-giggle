@@ -124,10 +124,24 @@ ships. Consistency comes from reusing the same handful of patterns everywhere:
   filled "Save", in that order.
 - **Feedback:** `ui.notify(..., type="positive")` on successful save,
   `type="negative"` for validation failures. No custom toast/snackbar.
-- **Status colour:** use a `q-badge` with `color` bound to a condition (see
-  Home's over-allocation badge) rather than colouring text or rows directly —
-  keeps status visually scannable and consistent with Quasar's badge
-  conventions elsewhere.
+- **Status colour:** every `status` table column (Strategy, Workstreams, Tasks)
+  renders through the shared `STATUS_BADGE_SLOT` from
+  [app/pages/common.py](../app/pages/common.py) — a coloured dot + the status
+  text, bound to a per-row `status_color` field
+  (`STATUS_COLORS.get(row["status"], STATUS_COLOR_FALLBACK)`, set in
+  `_load_rows()`). Wire a new status column the same way:
+  1. Add `"status_color": STATUS_COLORS.get(x.status, STATUS_COLOR_FALLBACK)`
+     to the row dict in `_load_rows()`.
+  2. `table.add_slot("body-cell-status", STATUS_BADGE_SLOT)` right after
+     creating the `ui.table` (order relative to the `body-cell-actions` slot
+     doesn't matter).
+  Don't invent a second status-colour scheme — if a status value isn't in
+  `STATUS_COLORS` yet, add it there (see the `proposed`/`active`/`on_hold`
+  entries added for strategy items) rather than colouring it ad hoc.
+  For a condition that isn't a `status` column at all (e.g. Home's
+  over-allocation flag), a `q-badge` with `color` bound to the condition is
+  the pattern instead — it doesn't need the shared slot's per-row colour
+  binding since there are only two states.
 
 ## Visualisations: use ECharts via NiceGUI
 
