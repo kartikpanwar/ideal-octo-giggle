@@ -1,0 +1,230 @@
+# Architecture
+
+Architectural reference for the Capacity Estimation app: the material components,
+the decisions behind them, and the project structure. Complements
+[data-model.md](data-model.md) (entity/table design), [standards.md](standards.md)
+(code and design conventions, including the ECharts visualisation standard), and
+[README.md](../README.md) (run instructions).
+
+## System summary
+
+A single-process **NiceGUI** web app. The UI, business logic, and database all run
+in one Python process — there is no separate API layer or frontend build step.
+State lives in an **in-memory SQLite** database for the lifetime of the process and
+is seeded from, and can be exported back to, CSV files on disk.
+
+```mermaid
+flowchart LR
+    subgraph Process["Single Python process (uv run python -m app.main)"]
+        CSV[("data/*.csv")] -- "load_csvs() on startup" --> DB[("In-memory SQLite\n(SQLAlchemy ORM)")]
+        DB -- "export_csvs()\n(Export to CSV button)" --> CSV
+        Pages["NiceGUI pages\n(app/pages/*)"] <--> DB
+        Services["app/services.py\n(history logging,\ncapacity rollups)"] <--> DB
+        Pages --> Services
+    end
+    Browser["Browser (Vue/Quasar client)"] <-- "WebSocket (Socket.IO)" --> Pages
+```
+
+## Material components
+
+### 1. Web framework: NiceGUI
+
+- The entire UI is server-rendered Python: each page function builds Vue/Quasar
+  components imperatively (`ui.table`, `ui.dialog`, `ui.select`, …) and NiceGUI
+  pushes DOM updates to the browser over a **Socket.IO WebSocket**.
+- **Why it matters architecturally:** there is no REST/JSON API and no separate
+  frontend codebase — a page's Python function *is* both the controller and the
+  view. Business logic must therefore stay out of page functions (see
+  [Layering](#layering) below) or it becomes untestable without a browser.
+- Pages are registered as routes in [app/main.py](../app/main.py) via `@ui.page(...)`
+  and each calls a `build()` function in `app/pages/<name>.py`.
+
+### 2. Persistence: in-memory SQLite via SQLAlchemy
+
+- `app/db.py` creates one engine for the process lifetime:
+  `create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})`.
+- **Why `StaticPool`:** SQLite's `sqlite://` (no file path) URI creates a *new,
+  empty* database per connection by default. `StaticPool` forces SQLAlchemy to
+  reuse a single underlying connection, which is what makes the in-memory DB
+  durable across requests/threads for the process's lifetime.
+- **Why `check_same_thread=False`:** NiceGUI/Starlette can service requests from
+  different threads; the default SQLite driver forbids cross-thread use of a
+  connection, so this is required alongside `StaticPool`.
+- **Consequence:** all state is lost on process restart. This is intentional for
+  v1 (see [CSV seeding](#3-csv-seed--export-round-trip)) but is the single
+  biggest constraint to design around if this app needs to survive restarts,
+  scale to multiple workers, or support concurrent users — none of which work
+  with this setup today (see [Known constraints](#known-constraints--future-decisions)).
+- ORM models are declared in [app/models.py](../app/models.py) using SQLAlchemy 2.0's
+  typed `Mapped[...]` / `mapped_column` style, one class per table.
+
+### 3. CSV seed / export round-trip
+
+- On every process start, `bootstrap()` in `app/main.py` calls `init_db()`
+  (creates all tables) then `load_csvs()` (`app/seed.py`), which reads each
+  `data/*.csv` file and inserts rows.
+- The header row of each CSV must match the corresponding model's column names;
+  `_coerce()` converts CSV strings to the right Python type by inspecting each
+  column's SQLAlchemy type (`Boolean`, `Integer`, `Float`, `Date`, `DateTime`).
+- Load order matters and is hardcoded in `CSV_TABLES` (parents before children,
+  e.g. `team_member` before `task`) so foreign keys resolve.
+- **Export to CSV** (a header button, wired in `app/pages/layout.py`) calls
+  `export_csvs()`, which queries every table and overwrites the same CSV files —
+  this is the *only* way changes made in the UI outlive a process restart.
+- **Why this design:** it gives the app deterministic, version-controllable seed
+  data (useful for demos and tests) without standing up a real database server.
+  The trade-off is manual, explicit persistence (a user must click Export) rather
+  than durability by default.
+
+### 4. Data model
+
+Three-level work hierarchy — **strategy item → workstream → task** — plus a
+capacity-planning layer and an audit trail. Full field-level design is in
+[data-model.md](data-model.md); the components below are the parts that shape
+the app's architecture:
+
+- **`estimate_history`** is an append-only, polymorphic log (`entity_type` +
+  `entity_id`, covering `task`/`workstream`/`strategy_item`). It's written
+  through one shared helper, `record_status_change()` / `record_task_change()`
+  in [app/services.py](../app/services.py), so every entity logs status/estimate
+  changes the same way. Currently only the Task page calls it — Workstream and
+  Strategy Item pages do not yet log history on edit (see
+  [Known constraints](#known-constraints--future-decisions)).
+- **Two-level capacity allocation:** `team_member_capacity` (availability per
+  person per `capacity_period`) and `workstream_allocation` (planned effort per
+  person per workstream per period) are separate from task-level
+  `estimated_effort_weeks`. `capacity_summary()` in `app/services.py` rolls both
+  up per person and compares them against the sum of *open* (not
+  done/cancelled) task estimates, flagging over-allocation. This comparison is
+  **not period-aware** today — it sums availability/allocation across all
+  periods and compares against total open task effort, because task effort
+  isn't yet phased per period (a noted gap, see below).
+- **Units:** all effort/capacity figures are **person-weeks** (not hours or
+  points) — a deliberate choice made early in the project to keep task effort,
+  workstream allocation, and member availability directly comparable without a
+  conversion step.
+
+### 5. Layering
+
+```
+app/pages/*.py    UI: builds NiceGUI components, wires callbacks, calls services/db directly
+app/services.py    Business logic: history logging, capacity rollups (DB-session in, plain dicts/ORM objects out)
+app/models.py      Schema: SQLAlchemy ORM models, status vocabularies
+app/db.py          Engine/session lifecycle
+app/seed.py        CSV <-> DB translation
+```
+
+- `app/pages/common.py` holds small cross-page helpers (date parsing, FK
+  dropdown option lists) to avoid duplicating query logic across the five page
+  modules.
+- **Why services are separate from pages:** `app/services.py` has no NiceGUI
+  imports, so it can be (and is) unit-tested directly against a real in-memory
+  DB fixture without a browser or event loop — see `tests/test_capacity.py` and
+  `tests/test_crud.py`. Pages are not unit-tested; they're verified manually via
+  the browser preview tool.
+- Each CRUD page follows the same internal pattern: `_load_rows()` (query +
+  flatten to dicts for `ui.table`), `_save()` (upsert), and `open_form()` (a
+  `ui.dialog` acting as both add and edit). `app/pages/capacity.py` generalizes
+  this into a shared `_crud_panel()` / `_dialog_buttons()` pair since it hosts
+  three near-identical CRUD tables (periods, availability, allocations) as tabs.
+
+### 6. Session-per-call data access
+
+- There is no long-lived request-scoped session. `app/db.py`'s `get_session()`
+  is a context manager opened fresh for each logical operation (a page load, a
+  save, an export) and committed/closed immediately:
+  `with get_session() as session: ...`.
+- **Why:** NiceGUI callbacks are plain Python closures, not framework-managed
+  request handlers, so there's no natural hook to open/close a session per HTTP
+  request the way a typical web framework middleware would. Short-lived,
+  explicit sessions avoid stale/detached-object bugs at the cost of re-querying
+  option lists (e.g. `member_options()`) on every dialog open.
+
+### 7. Tooling and dependency management
+
+- **uv** manages the Python environment and dependencies (`pyproject.toml`,
+  `uv.lock`); Python is pinned to **3.12** via `.python-version`.
+- Runtime dependencies: `nicegui>=3.16.0`, `sqlalchemy>=2.0.52`. Dev-only:
+  `pytest>=9.1.1`. No pandas, no ORM migration tool (Alembic) — schema is
+  created fresh via `Base.metadata.create_all()` on every start, which is only
+  viable because the DB is in-memory and reseeded each run.
+- `.claude/launch.json` defines how the app is previewed during development
+  (`uv run python -m app.main` on port 8080) — this is tooling configuration,
+  not part of the shipped app.
+
+## Project structure
+
+```
+.
+├── app/
+│   ├── main.py            # NiceGUI entrypoint: bootstrap() seeds DB, @ui.page routes
+│   ├── db.py               # Engine (StaticPool, in-memory SQLite) + get_session()
+│   ├── models.py            # SQLAlchemy ORM models + status vocabularies
+│   ├── seed.py               # CSV -> DB (load_csvs) and DB -> CSV (export_csvs)
+│   ├── services.py            # estimate_history logging, capacity_summary()
+│   └── pages/
+│       ├── layout.py           # Shared header/nav + Export-to-CSV action
+│       ├── common.py            # Date parsing + FK dropdown option helpers
+│       ├── home.py               # Landing page: capacity-vs-estimate overview
+│       ├── people.py              # Team member CRUD
+│       ├── strategy.py             # Strategy item CRUD
+│       ├── workstreams.py           # Workstream CRUD (FK: strategy item)
+│       ├── tasks.py                  # Task CRUD + filters + history viewer
+│       └── capacity.py                # Tabbed CRUD: periods / availability / allocations
+├── data/
+│   ├── people.csv, strategy_items.csv, workstreams.csv, tasks.csv
+│   ├── capacity_period.csv, team_member_capacity.csv, workstream_allocation.csv
+│   └── estimate_history.csv          # only present after an Export (not seeded)
+├── docs/
+│   ├── data-model.md            # Entity/field-level data model reference
+│   └── architecture.md           # This file
+├── tests/
+│   ├── conftest.py               # Fresh in-memory DB fixture per test
+│   ├── test_seed.py               # CSV <-> DB round-trip
+│   ├── test_crud.py                # estimate_history logging on task changes
+│   └── test_capacity.py             # capacity_summary() rollup + over-allocation flag
+├── pyproject.toml / uv.lock        # uv-managed deps, Python >=3.12
+├── .python-version                  # pinned to 3.12
+├── .claude/launch.json               # dev-server preview config (not shipped)
+└── README.md                          # run/test instructions
+```
+
+## Request / lifecycle flow
+
+1. **Startup:** `app/main.py` calls `bootstrap()` once at import time (not inside
+   `ui.run()`), which creates all tables and loads every `data/*.csv` into the
+   in-memory DB. This happens once per process, before any page is served.
+2. **Page load:** NiceGUI routes `/`, `/people`, `/strategy`, `/workstreams`,
+   `/tasks`, `/capacity` each to a `build()` function that opens its own
+   session(s), queries rows, and renders `ui.table`/`ui.dialog` components.
+3. **Mutation:** a dialog's Save handler opens a fresh session, upserts the ORM
+   object, and — for tasks — calls `record_task_change()` if status or estimated
+   dates changed, appending an `estimate_history` row in the same session/commit.
+4. **Export:** the header's "Export to CSV" button opens one session, queries
+   every table (in the same parent-before-child order used for loading), and
+   overwrites `data/*.csv`, including a new `estimate_history.csv` if history
+   rows exist.
+
+## Known constraints & future decisions
+
+These aren't bugs — they're scope boundaries from v1 that the next architectural
+decision should account for:
+
+- **No persistence across restarts** without an explicit Export. A move to a
+  file-based SQLite DB (or a server DB) would remove the CSV round-trip's role
+  as the durability mechanism and is the most consequential change on the
+  horizon.
+- **Single process, no auth, no multi-user isolation.** Every browser tab shares
+  the same in-memory DB and there's no session/user concept — fine for a local
+  planning tool, not for concurrent multi-user use.
+- **Task effort is not period-phased.** `estimated_effort_weeks` is a single
+  total per task, so `capacity_summary()` compares period-summed availability
+  against all-time open-task effort rather than a true per-period view. A
+  `task_allocation(task_id, period_id, weeks)` table (mirroring
+  `workstream_allocation`) would close this gap.
+- **History logging is task-only.** `record_status_change()` is entity-agnostic
+  by design, but only `app/pages/tasks.py` currently calls it — workstream and
+  strategy-item status changes aren't yet logged.
+- **No schema migrations.** `create_all()` is safe today only because the DB is
+  rebuilt from scratch every run; introducing persistent storage will require a
+  migration strategy (e.g. Alembic).

@@ -1,0 +1,3 @@
+id,name,description,priority,status,owner_id,target_start,target_end
+1,Customer Onboarding Revamp,Reduce time-to-value for new customers,1,active,1,2026-09-01,2026-12-15
+2,Data Platform Foundations,Build shared data pipeline and warehouse,2,active,3,2026-09-15,2027-02-28

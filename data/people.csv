@@ -1,0 +1,5 @@
+id,name,email,role,default_weekly_hours,active
+1,Alice Nguyen,alice@example.com,Engineering Lead,40,True
+2,Ben Carter,ben@example.com,Backend Engineer,40,True
+3,Priya Shah,priya@example.com,Data Engineer,32,True
+4,Diego Ramos,diego@example.com,Product Designer,40,True

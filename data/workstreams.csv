@@ -1,0 +1,5 @@
+id,strategy_item_id,name,description,status,lead_id,estimated_start,estimated_end
+1,1,Guided Setup Flow,Interactive first-run setup wizard,in_progress,1,2026-09-01,2026-10-31
+2,1,In-App Checklist,Progress checklist for onboarding steps,not_started,4,2026-10-01,2026-11-30
+3,2,Ingestion Pipeline,Batch and streaming ingestion,in_progress,3,2026-09-15,2026-12-31
+4,2,Warehouse Modeling,Dimensional models and marts,not_started,2,2026-11-01,2027-02-15
