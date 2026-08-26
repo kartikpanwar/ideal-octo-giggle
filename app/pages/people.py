@@ -268,7 +268,11 @@ def build_allocation_heatmap_options(members: list[dict], rows: list[dict]) -> d
             "formatter": "{b}",
             "extraCssText": "text-align:left; white-space:pre-line; max-width:220px;",
         },
-        "grid": {"left": "12%", "right": "4%", "top": "18%", "bottom": "16%", "containLabel": True},
+        # top is a fixed pixel offset, not a %: the visualMap legend's own
+        # rendered height doesn't scale with the chart's (data-driven) total
+        # height, so a percentage margin shrinks below the legend's actual
+        # height at low row counts and the legend overlaps the first row.
+        "grid": {"left": "12%", "right": "4%", "top": 55, "bottom": "16%", "containLabel": True},
         "xAxis": {
             "type": "category",
             "data": [_week_label(w) for w in weeks],
