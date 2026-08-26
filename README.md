@@ -33,7 +33,9 @@ Then open http://localhost:8080.
   allocation vs. open task estimates, with an over-allocation flag). Reserved for more
   visualisations later.
 - **People / Strategy / Workstreams / Tasks** — create and amend records. Tasks can be
-  filtered by workstream, person, and status.
+  filtered by workstream, person, and status. Each **person** row has a **timeline** view
+  comparing estimated vs. actual dates across their tasks; each **workstream** row has a
+  timeline of its constituent tasks' estimated dates — both are ECharts Gantt-style charts.
 - **Capacity** (`/capacity`) — tabbed CRUD for planning periods, per-member availability,
   and workstream allocations.
 - **Export to CSV** (header button) — write the in-memory DB back to `data/*.csv`.
@@ -55,7 +57,7 @@ app/
   main.py     # NiceGUI entrypoint + page routes
   pages/      # home, people, strategy, workstreams, tasks, capacity
 data/         # seed CSVs (incl. capacity_period, team_member_capacity, workstream_allocation)
-tests/        # seed round-trip, history logging, capacity summary
+tests/        # seed round-trip, history logging, capacity summary, timeline chart builders
 ```
 
 ## Notes

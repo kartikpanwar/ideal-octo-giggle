@@ -8,17 +8,14 @@ from sqlalchemy.orm import joinedload
 
 from app.db import get_session
 from app.models import TASK_STATUSES, WORKSTREAM_STATUSES, Task, Workstream
-from app.pages.common import fmt_date, member_options, parse_date, strategy_options
+from app.pages.common import (
+    STATUS_COLORS,
+    fmt_date,
+    member_options,
+    parse_date,
+    strategy_options,
+)
 from app.pages.layout import header
-
-# Status -> colour, used for both the timeline bars and its legend.
-STATUS_COLORS = {
-    "not_started": "#9e9e9e",
-    "in_progress": "#1976d2",
-    "blocked": "#e53935",
-    "done": "#43a047",
-    "cancelled": "#bdbdbd",
-}
 
 COLUMNS = [
     {"name": "id", "label": "ID", "field": "id", "align": "left"},

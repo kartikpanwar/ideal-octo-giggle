@@ -1,4 +1,5 @@
-"""Small helpers shared across CRUD pages: date parsing and FK option lists."""
+"""Small helpers shared across CRUD pages: date parsing, FK option lists, and
+the task-status colour map used by the timeline charts (workstreams + people)."""
 
 from __future__ import annotations
 
@@ -6,6 +7,15 @@ from datetime import date
 
 from app.db import get_session
 from app.models import CapacityPeriod, StrategyItem, TeamMember, Workstream
+
+# Status -> colour, shared by every timeline/status visualisation.
+STATUS_COLORS = {
+    "not_started": "#9e9e9e",
+    "in_progress": "#1976d2",
+    "blocked": "#e53935",
+    "done": "#43a047",
+    "cancelled": "#bdbdbd",
+}
 
 
 def parse_date(value: str | None) -> date | None:

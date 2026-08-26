@@ -154,7 +154,7 @@ chart = ui.echart({
 }).classes("w-full h-80")
 ```
 
-**Worked example:** [app/pages/workstreams.py](../app/pages/workstreams.py)'s
+**Worked examples:** [app/pages/workstreams.py](../app/pages/workstreams.py)'s
 `build_timeline_options()` renders each workstream's tasks as a Gantt-style
 timeline (ECharts has no native Gantt series, so it uses the standard
 invisible-offset + visible-duration stacked-bar workaround). It's a good
@@ -165,6 +165,16 @@ substitutions**, so embedding HTML tags (`<br/>`, `<b>`) in a data point's
 `name` renders as literal text instead of formatting. Use `\n` plus
 `tooltip.extraCssText: "white-space:pre-line"` for multi-line tooltip content
 instead of HTML.
+
+[app/pages/people.py](../app/pages/people.py)'s `build_person_timeline_options()`
+extends the same technique to compare **estimated vs. actual** dates per task:
+two distinct `stack` groups ("est", "act") on the same category axis render as
+grouped bars — a full-width bar coloured by status, and a thinner fixed-colour
+bar alongside it — with `None` entries where a task is missing one of the two
+date pairs so its bar simply doesn't render. `STATUS_COLORS` lives in
+[app/pages/common.py](../app/pages/common.py) since it's now used by both
+timelines — a concrete instance of "promote to `common.py` only once two pages
+actually need it," not before.
 
 - Build the `options` dict from data already assembled by an `app/services.py`
   function (e.g. `capacity_summary()`) — never query the DB inside a chart
