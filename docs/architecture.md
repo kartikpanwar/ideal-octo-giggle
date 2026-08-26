@@ -115,18 +115,19 @@ app/seed.py        CSV <-> DB translation
 ```
 
 - `app/pages/common.py` holds small cross-page helpers (date parsing, FK
-  dropdown option lists) to avoid duplicating query logic across the five page
-  modules.
+  dropdown option lists, the shared status colour map/badge slot) to avoid
+  duplicating query logic across the page modules.
 - **Why services are separate from pages:** `app/services.py` has no NiceGUI
   imports, so it can be (and is) unit-tested directly against a real in-memory
   DB fixture without a browser or event loop — see `tests/test_capacity.py` and
   `tests/test_crud.py`. Pages are not unit-tested; they're verified manually via
   the browser preview tool.
-- Each CRUD page follows the same internal pattern: `_load_rows()` (query +
-  flatten to dicts for `ui.table`), `_save()` (upsert), and `open_form()` (a
-  `ui.dialog` acting as both add and edit). `app/pages/capacity.py` generalizes
-  this into a shared `_crud_panel()` / `_dialog_buttons()` pair since it hosts
-  three near-identical CRUD tables (periods, availability, allocations) as tabs.
+- Each CRUD entity follows the same internal pattern: `_load_rows()` (query +
+  flatten to dicts for `ui.table`), a `_save_*()` (upsert), and an
+  `open_*_form()` (a `ui.dialog` acting as both add and edit). `app/pages/strategy.py`
+  hosts two such entities on one page — strategy items as cards, each with its
+  workstreams in a nested `ui.table` underneath — since the two are meant to be
+  browsed together (see the "Combined pages" note below).
 
 ### 6. Session-per-call data access
 
@@ -161,42 +162,54 @@ app/seed.py        CSV <-> DB translation
 │   ├── db.py               # Engine (StaticPool, in-memory SQLite) + get_session()
 │   ├── models.py            # SQLAlchemy ORM models + status vocabularies
 │   ├── seed.py               # CSV -> DB (load_csvs) and DB -> CSV (export_csvs)
-│   ├── services.py            # estimate_history logging, capacity_summary()
+│   ├── services.py            # estimate_history logging, capacity/KPI/allocation rollups
 │   └── pages/
 │       ├── layout.py           # Shared header/nav + Export-to-CSV action
-│       ├── common.py            # Date parsing + FK dropdown option helpers
-│       ├── home.py               # Landing page: capacity-vs-estimate overview
-│       ├── people.py              # Team member CRUD
-│       ├── strategy.py             # Strategy item CRUD
-│       ├── workstreams.py           # Workstream CRUD (FK: strategy item)
-│       ├── tasks.py                  # Task CRUD + filters + history viewer
-│       └── capacity.py                # Tabbed CRUD: periods / availability / allocations
-├── data/
+│       ├── common.py            # Date parsing, FK dropdown helpers, shared status colour map/badge slot
+│       ├── home.py               # Landing page: KPI row, team capacity chart, workstream x person grid
+│       ├── people.py              # Team member CRUD + per-person timeline + weekly allocation heatmap
+│       ├── strategy.py             # Strategy items (cards) with their workstreams nested underneath,
+│       │                           # incl. per-workstream timeline; combined page (see note below)
+│       └── tasks.py                  # Task CRUD + filters (multi-select status) + history viewer
+├── data/                                # seed CSVs, one per table, loaded in FK-safe order
 │   ├── people.csv, strategy_items.csv, workstreams.csv, tasks.csv
 │   ├── capacity_period.csv, team_member_capacity.csv, workstream_allocation.csv
-│   └── estimate_history.csv          # only present after an Export (not seeded)
+│   └── estimate_history.csv              # seeded with sample entries, including estimate revisions
 ├── docs/
 │   ├── data-model.md            # Entity/field-level data model reference
-│   └── architecture.md           # This file
-├── tests/
+│   ├── standards.md              # Code/design conventions, incl. the ECharts visualisation rule
+│   └── architecture.md            # This file
+├── tests/                                # one file per service function / chart builder, roughly;
+│   │                                      # not exhaustively listed here — see tests/ directly
 │   ├── conftest.py               # Fresh in-memory DB fixture per test
 │   ├── test_seed.py               # CSV <-> DB round-trip
 │   ├── test_crud.py                # estimate_history logging on task changes
-│   └── test_capacity.py             # capacity_summary() rollup + over-allocation flag
+│   └── test_capacity.py             # capacity_summary()/kpi_summary() rollups
 ├── pyproject.toml / uv.lock        # uv-managed deps, Python >=3.12
 ├── .python-version                  # pinned to 3.12
 ├── .claude/launch.json               # dev-server preview config (not shipped)
 └── README.md                          # run/test instructions
 ```
 
+**Combined pages:** Strategy items and workstreams share one page/route
+(`app/pages/strategy.py`, `/strategy`) rather than two, since a workstream is
+only ever browsed in the context of its strategy item — each strategy item
+renders as a card with its workstreams in a nested table underneath, plus an
+"Unassigned" card for workstreams with no `strategy_item_id`. There used to be
+a standalone `/capacity` page (tabbed CRUD for `capacity_period` /
+`team_member_capacity` / `workstream_allocation`); it was removed, but the
+tables themselves, their seed CSVs, and every service function that reads them
+(`capacity_summary()`, the Home KPI row) are unaffected — new rows for those
+three tables can currently only be added by editing the CSVs before startup.
+
 ## Request / lifecycle flow
 
 1. **Startup:** `app/main.py` calls `bootstrap()` once at import time (not inside
    `ui.run()`), which creates all tables and loads every `data/*.csv` into the
    in-memory DB. This happens once per process, before any page is served.
-2. **Page load:** NiceGUI routes `/`, `/people`, `/strategy`, `/workstreams`,
-   `/tasks`, `/capacity` each to a `build()` function that opens its own
-   session(s), queries rows, and renders `ui.table`/`ui.dialog` components.
+2. **Page load:** NiceGUI routes `/`, `/people`, `/strategy`, `/tasks` each to
+   a `build()` function that opens its own session(s), queries rows, and
+   renders `ui.table`/`ui.dialog`/`ui.echart` components.
 3. **Mutation:** a dialog's Save handler opens a fresh session, upserts the ORM
    object, and — for tasks — calls `record_task_change()` if status or estimated
    dates changed, appending an `estimate_history` row in the same session/commit.

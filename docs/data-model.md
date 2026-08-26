@@ -106,10 +106,10 @@ the **workstream** level, and reconciled bottom-up against **task** effort.
 |---|---|---|
 | id | PK | |
 | name | text | |
-| email | text | |
 | role | text | |
 | default_weekly_hours | numeric | baseline FTE reference |
 | active | bool | |
+| active_from | date | when this member became active (nullable) |
 | created_at | timestamp | |
 | updated_at | timestamp | |
 

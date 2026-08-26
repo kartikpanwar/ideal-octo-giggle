@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from app.pages.workstreams import build_timeline_options
+from app.pages.strategy import build_timeline_options
 
 
 def _task(name, start=None, end=None, status="not_started", effort=2.0, assignee="Sam"):

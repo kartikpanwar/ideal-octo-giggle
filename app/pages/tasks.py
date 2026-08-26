@@ -16,9 +16,9 @@ from app.pages.common import (
     workstream_options,
 )
 from app.pages.layout import header
-from app.services import record_task_change, task_history
+from app.services import CLOSED_STATUSES, record_task_change, task_history
 
-_ALL = "__all__"  # sentinel option value meaning "no filter"
+_ALL = "__all__"  # sentinel option value meaning "no filter" (workstream/person filters)
 
 COLUMNS = [
     {"name": "id", "label": "ID", "field": "id", "align": "left"},
@@ -29,6 +29,8 @@ COLUMNS = [
     {"name": "estimated_effort_weeks", "label": "Effort (wks)", "field": "estimated_effort_weeks"},
     {"name": "estimated_start", "label": "Est. start", "field": "estimated_start"},
     {"name": "estimated_end", "label": "Est. end", "field": "estimated_end"},
+    {"name": "actual_start", "label": "Actual start", "field": "actual_start"},
+    {"name": "actual_end", "label": "Actual end", "field": "actual_end"},
     {"name": "actions", "label": "", "field": "actions"},
 ]
 
@@ -51,12 +53,15 @@ def _load_rows() -> list[dict]:
                 "estimated_effort_weeks": t.estimated_effort_weeks,
                 "estimated_start": fmt_date(t.estimated_start),
                 "estimated_end": fmt_date(t.estimated_end),
+                "actual_start": fmt_date(t.actual_start),
+                "actual_end": fmt_date(t.actual_end),
             }
             for t in session.query(Task).order_by(Task.id).all()
         ]
 
 
-def _save(row_id, name, description, workstream_id, assignee_id, status, effort, start, end, status_update) -> None:
+def _save(row_id, name, description, workstream_id, assignee_id, status, effort, start, end,
+          actual_start, actual_end, status_update) -> None:
     with get_session() as session:
         is_new = row_id is None
         task = Task() if is_new else session.get(Task, row_id)
@@ -72,6 +77,8 @@ def _save(row_id, name, description, workstream_id, assignee_id, status, effort,
         task.estimated_effort_weeks = effort
         task.estimated_start = parse_date(start)
         task.estimated_end = parse_date(end)
+        task.actual_start = parse_date(actual_start)
+        task.actual_end = parse_date(actual_end)
         if is_new:
             session.add(task)
         session.flush()  # ensure task.id for the history row
@@ -89,8 +96,11 @@ def _save(row_id, name, description, workstream_id, assignee_id, status, effort,
 def build() -> None:
     header("Tasks")
 
-    # Filter state, driven by the selects below.
-    filters = {"workstream_id": _ALL, "assignee_id": _ALL, "status": _ALL}
+    # Filter state, driven by the selects below. Status is multi-select (a
+    # list, not the _ALL-sentinel pattern the other two use) and defaults to
+    # excluding closed statuses so the table opens showing active work.
+    default_statuses = [s for s in TASK_STATUSES if s not in CLOSED_STATUSES]
+    filters = {"workstream_id": _ALL, "assignee_id": _ALL, "status": default_statuses}
 
     def _apply_filters(rows: list[dict]) -> list[dict]:
         return [
@@ -98,7 +108,7 @@ def build() -> None:
             for r in rows
             if (filters["workstream_id"] == _ALL or r["workstream_id"] == filters["workstream_id"])
             and (filters["assignee_id"] == _ALL or r["assignee_id"] == filters["assignee_id"])
-            and (filters["status"] == _ALL or r["status"] == filters["status"])
+            and r["status"] in filters["status"]
         ]
 
     def refresh() -> None:
@@ -153,6 +163,12 @@ def build() -> None:
             effort = ui.number("Estimated effort (weeks)", value=row.get("estimated_effort_weeks"), step=0.5)
             start = ui.input("Est. start (YYYY-MM-DD)", value=row.get("estimated_start", "")).classes("w-full")
             end = ui.input("Est. end (YYYY-MM-DD)", value=row.get("estimated_end", "")).classes("w-full")
+            actual_start = ui.input(
+                "Actual start (YYYY-MM-DD)", value=row.get("actual_start", "")
+            ).classes("w-full")
+            actual_end = ui.input(
+                "Actual end (YYYY-MM-DD)", value=row.get("actual_end", "")
+            ).classes("w-full")
             status_update = ui.textarea("Status update (logged on status/date change)").classes("w-full")
 
             def save() -> None:
@@ -161,7 +177,7 @@ def build() -> None:
                     return
                 _save(row.get("id"), name.value.strip(), description.value, workstream.value,
                       assignee.value, status.value, effort.value, start.value, end.value,
-                      status_update.value)
+                      actual_start.value, actual_end.value, status_update.value)
                 dialog.close()
                 refresh()
                 ui.notify("Saved", type="positive")
@@ -175,9 +191,12 @@ def build() -> None:
         filters[key] = _ALL if value is None else value
         refresh()
 
+    def _set_status(value) -> None:
+        filters["status"] = value or []
+        refresh()
+
     ws_opts = {_ALL: "All workstreams", **workstream_options()}
     who_opts = {_ALL: "All people", **member_options()}
-    status_opts = {_ALL: "All statuses", **{s: s for s in TASK_STATUSES}}
 
     # Visual order: title/add, filters, then the table.
     with ui.row().classes("items-center gap-4 p-4"):
@@ -190,8 +209,8 @@ def build() -> None:
                   on_change=lambda e: _set("workstream_id", e.value)).classes("w-52")
         ui.select(who_opts, value=_ALL, label="Person",
                   on_change=lambda e: _set("assignee_id", e.value)).classes("w-52")
-        ui.select(status_opts, value=_ALL, label="Status",
-                  on_change=lambda e: _set("status", e.value)).classes("w-44")
+        ui.select(TASK_STATUSES, label="Status", multiple=True, value=default_statuses,
+                  on_change=lambda e: _set_status(e.value)).classes("w-64")
 
     table_holder = ui.column().classes("w-full px-4")
     refresh()

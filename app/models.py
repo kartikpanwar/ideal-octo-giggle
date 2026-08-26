@@ -35,10 +35,10 @@ class TeamMember(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
-    email: Mapped[str | None] = mapped_column(String)
     role: Mapped[str | None] = mapped_column(String)
     default_weekly_hours: Mapped[float | None] = mapped_column(Float)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    active_from: Mapped[date | None] = mapped_column(Date)
 
     tasks: Mapped[list[Task]] = relationship(back_populates="assignee")
 

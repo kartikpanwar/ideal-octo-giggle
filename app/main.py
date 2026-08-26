@@ -5,7 +5,7 @@ from __future__ import annotations
 from nicegui import ui
 
 from app.db import get_session, init_db
-from app.pages import capacity, home, people, strategy, tasks, workstreams
+from app.pages import home, people, strategy, tasks
 from app.seed import load_csvs
 
 
@@ -31,19 +31,9 @@ def strategy_page() -> None:
     strategy.build()
 
 
-@ui.page("/workstreams")
-def workstreams_page() -> None:
-    workstreams.build()
-
-
 @ui.page("/tasks")
 def tasks_page() -> None:
     tasks.build()
-
-
-@ui.page("/capacity")
-def capacity_page() -> None:
-    capacity.build()
 
 
 bootstrap()

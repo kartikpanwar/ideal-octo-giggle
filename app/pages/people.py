@@ -11,7 +11,7 @@ from sqlalchemy.orm import joinedload
 
 from app.db import get_session
 from app.models import TASK_STATUSES, Task, TeamMember
-from app.pages.common import STATUS_COLORS, fmt_date, month_year_axis_label
+from app.pages.common import STATUS_COLORS, fmt_date, month_year_axis_label, parse_date
 from app.pages.layout import header
 from app.services import weekly_allocation
 
@@ -23,15 +23,47 @@ ACTUAL_BAR_COLOR = "#37474f"
 # value so a single wildly over-allocated week doesn't wash out the scale.
 HEATMAP_MAX = 120
 
+# Cycled by team_member.id (stable regardless of table order/filtering) for
+# the avatar background colour.
+AVATAR_PALETTE = [
+    "#1976d2", "#43a047", "#fb8c00", "#8e24aa", "#00838f", "#c62828", "#6d4c41", "#3949ab",
+]
+
+# body-cell-name slot: an initials avatar + the name, bound to per-row
+# "avatar_color" and "initials" fields (see _avatar_color / _initials).
+NAME_AVATAR_SLOT = (
+    '<q-td :props="props">'
+    '<div class="row items-center no-wrap" style="gap:8px">'
+    "<div :style=\"'background-color:' + props.row.avatar_color + "
+    "'; color:white; width:28px; height:28px; border-radius:50%; display:flex; "
+    "align-items:center; justify-content:center; font-size:11px; font-weight:600; "
+    "flex-shrink:0;'\">{{ props.row.initials }}</div>"
+    "<span>{{ props.row.name }}</span>"
+    "</div></q-td>"
+)
+
 COLUMNS = [
     {"name": "id", "label": "ID", "field": "id", "align": "left"},
     {"name": "name", "label": "Name", "field": "name", "align": "left"},
-    {"name": "email", "label": "Email", "field": "email", "align": "left"},
     {"name": "role", "label": "Role", "field": "role", "align": "left"},
     {"name": "default_weekly_hours", "label": "Weekly hrs", "field": "default_weekly_hours"},
     {"name": "active", "label": "Active", "field": "active"},
+    {"name": "active_from", "label": "Active from", "field": "active_from"},
     {"name": "actions", "label": "", "field": "actions"},
 ]
+
+
+def _initials(name: str) -> str:
+    parts = name.split()
+    if not parts:
+        return "?"
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return (parts[0][0] + parts[-1][0]).upper()
+
+
+def _avatar_color(person_id: int) -> str:
+    return AVATAR_PALETTE[person_id % len(AVATAR_PALETTE)]
 
 
 def _load_rows() -> list[dict]:
@@ -40,10 +72,12 @@ def _load_rows() -> list[dict]:
             {
                 "id": p.id,
                 "name": p.name,
-                "email": p.email,
+                "initials": _initials(p.name),
+                "avatar_color": _avatar_color(p.id),
                 "role": p.role,
                 "default_weekly_hours": p.default_weekly_hours,
                 "active": p.active,
+                "active_from": fmt_date(p.active_from),
             }
             for p in session.query(TeamMember).order_by(TeamMember.id).all()
         ]
@@ -80,7 +114,7 @@ def build_person_timeline_options(tasks: list[dict]) -> dict | None:
     planned vs. actual dates are directly comparable on one row.
 
     Uses the same invisible-offset + visible-duration stacked-bar workaround as
-    the workstream timeline (see app/pages/workstreams.py), doubled: the
+    the workstream timeline (see app/pages/strategy.py), doubled: the
     estimated pair uses stack "est", the actual pair uses stack "act" — two
     distinct stacks on the same category axis render as grouped bars.
     Tasks with neither a complete estimated nor actual date pair are excluded
@@ -267,14 +301,14 @@ def build_allocation_heatmap_options(members: list[dict], rows: list[dict]) -> d
     }
 
 
-def _save(row_id: int | None, name, email, role, hours, active) -> None:
+def _save(row_id: int | None, name, role, hours, active, active_from) -> None:
     with get_session() as session:
         person = session.get(TeamMember, row_id) if row_id else TeamMember()
         person.name = name
-        person.email = email or None
         person.role = role or None
         person.default_weekly_hours = hours
         person.active = active
+        person.active_from = parse_date(active_from)
         if row_id is None:
             session.add(person)
 
@@ -288,6 +322,7 @@ def build() -> None:
         table_holder.clear()
         with table_holder:
             table = ui.table(columns=COLUMNS, rows=_load_rows(), row_key="id").classes("w-full")
+            table.add_slot("body-cell-name", NAME_AVATAR_SLOT)
             table.add_slot(
                 "body-cell-actions",
                 '<q-td :props="props">'
@@ -350,17 +385,19 @@ def build() -> None:
         with ui.dialog() as dialog, ui.card().classes("w-96"):
             ui.label("Edit person" if row else "Add person").classes("text-lg font-bold")
             name = ui.input("Name", value=row.get("name", "")).classes("w-full")
-            email = ui.input("Email", value=row.get("email") or "").classes("w-full")
             role = ui.input("Role", value=row.get("role") or "").classes("w-full")
             hours = ui.number("Default weekly hours", value=row.get("default_weekly_hours") or 40)
             active = ui.switch("Active", value=row.get("active", True))
+            active_from = ui.input(
+                "Active from (YYYY-MM-DD)", value=row.get("active_from", "")
+            ).classes("w-full")
 
             def save() -> None:
                 if not name.value.strip():
                     ui.notify("Name is required", type="negative")
                     return
-                _save(row.get("id"), name.value.strip(), email.value, role.value,
-                      hours.value, active.value)
+                _save(row.get("id"), name.value.strip(), role.value,
+                      hours.value, active.value, active_from.value)
                 dialog.close()
                 refresh()
                 ui.notify("Saved", type="positive")

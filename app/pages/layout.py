@@ -11,9 +11,7 @@ NAV = [
     ("Home", "/"),
     ("People", "/people"),
     ("Strategy", "/strategy"),
-    ("Workstreams", "/workstreams"),
     ("Tasks", "/tasks"),
-    ("Capacity", "/capacity"),
 ]
 
 

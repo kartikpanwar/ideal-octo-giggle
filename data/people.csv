@@ -1,5 +1,5 @@
-id,name,email,role,default_weekly_hours,active
-1,Alice Nguyen,alice@example.com,Engineering Lead,40,True
-2,Ben Carter,ben@example.com,Backend Engineer,40,True
-3,Priya Shah,priya@example.com,Data Engineer,32,True
-4,Diego Ramos,diego@example.com,Product Designer,40,True
+id,name,role,default_weekly_hours,active,active_from
+1,Alice Nguyen,Engineering Lead,40,True,2024-01-15
+2,Ben Carter,Backend Engineer,40,True,2025-03-03
+3,Priya Shah,Data Engineer,32,True,2025-06-16
+4,Diego Ramos,Product Designer,40,True,2026-01-12

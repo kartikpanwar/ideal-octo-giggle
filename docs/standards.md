@@ -22,11 +22,13 @@ Each `app/pages/<entity>.py` follows the same shape, top to bottom:
 Keep new CRUD pages in this shape rather than inventing a new structure — see
 [people.py](../app/pages/people.py) for the shortest example and
 [tasks.py](../app/pages/tasks.py) for one with filters and a secondary
-(history) dialog. When a page hosts multiple near-identical CRUD tables (as
-`capacity.py` does for periods/availability/allocations), factor the shared
-table+dialog scaffolding into a helper (see `_crud_panel()` /
-`_dialog_buttons()` in [capacity.py](../app/pages/capacity.py)) rather than
-copy-pasting the pattern three times.
+(history) dialog. When a page hosts multiple near-identical CRUD tables or
+entities, factor the shared table/dialog scaffolding into a helper rather than
+copy-pasting the pattern per entity — see `_render_workstream_table()` in
+[strategy.py](../app/pages/strategy.py), which renders the same workstream
+table (with its `edit`/`timeline` actions) once per strategy-item card plus
+once more for the "Unassigned" bucket, instead of duplicating that table
+definition at every call site.
 
 ### Naming
 
@@ -124,8 +126,8 @@ ships. Consistency comes from reusing the same handful of patterns everywhere:
   filled "Save", in that order.
 - **Feedback:** `ui.notify(..., type="positive")` on successful save,
   `type="negative"` for validation failures. No custom toast/snackbar.
-- **Status colour:** every `status` table column (Strategy, Workstreams, Tasks)
-  renders through the shared `STATUS_BADGE_SLOT` from
+- **Status colour:** every `status` table column (strategy items, workstreams,
+  tasks) renders through the shared `STATUS_BADGE_SLOT` from
   [app/pages/common.py](../app/pages/common.py) — a coloured dot + the status
   text, bound to a per-row `status_color` field
   (`STATUS_COLORS.get(row["status"], STATUS_COLOR_FALLBACK)`, set in
@@ -168,7 +170,7 @@ chart = ui.echart({
 }).classes("w-full h-80")
 ```
 
-**Worked examples:** [app/pages/workstreams.py](../app/pages/workstreams.py)'s
+**Worked examples:** [app/pages/strategy.py](../app/pages/strategy.py)'s
 `build_timeline_options()` renders each workstream's tasks as a Gantt-style
 timeline (ECharts has no native Gantt series, so it uses the standard
 invisible-offset + visible-duration stacked-bar workaround). It's a good

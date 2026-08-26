@@ -38,17 +38,22 @@ Then open http://localhost:8080.
   each cell coloured by that person's total *open* (not done/cancelled) estimated effort on
   tasks in that workstream — an at-a-glance "who's working on what". Reserved for more
   visualisations later.
-- **People / Strategy / Workstreams / Tasks** — create and amend records. Tasks can be
-  filtered by workstream, person, and status. Every status column (Strategy, Workstreams,
-  Tasks) renders as a coloured dot + label rather than plain text, using a shared
-  status → colour map. Each **person** row has a **timeline** view comparing estimated vs.
-  actual dates across their tasks; each **workstream** row has a timeline of its
-  constituent tasks' estimated dates — both are ECharts Gantt-style charts. The People page
-  also has a **weekly allocation heatmap**: one row per person, one column per calendar
-  week, coloured by % of that week's capacity consumed by estimated task effort (spread
-  evenly across each task's date range).
-- **Capacity** (`/capacity`) — tabbed CRUD for planning periods, per-member availability,
-  and workstream allocations.
+- **People** (`/people`) — team member CRUD (name, role, weekly hours, active, active-from
+  date; no email field). Each row shows an initials avatar (colour stable per person). Each
+  row's **timeline** view compares estimated vs. actual dates across that person's tasks,
+  and the page also has a **weekly allocation heatmap**: one row per person, one column per
+  calendar week, coloured by % of that week's capacity consumed by estimated task effort
+  (spread evenly across each task's date range).
+- **Strategy** (`/strategy`) — strategy items and their workstreams on one page: each
+  strategy item is a card with its workstreams listed underneath (plus an "Unassigned" card
+  for workstreams with no strategy item), with a status filter for the workstream lists.
+  Each workstream row has a **timeline** of its constituent tasks' estimated dates — an
+  ECharts Gantt-style chart, same technique as the People page's per-person timeline.
+- **Tasks** (`/tasks`) — task CRUD, including actual start/end dates alongside the estimated
+  ones. Filterable by workstream, person, and status (status is multi-select, defaulting to
+  everything except done/cancelled).
+- Every status column (strategy items, workstreams, tasks) renders as a coloured dot +
+  label rather than plain text, using a shared status → colour map.
 - **Export to CSV** (header button) — write the in-memory DB back to `data/*.csv`.
 
 ## Test
@@ -64,10 +69,11 @@ app/
   db.py       # in-memory engine + session
   models.py   # SQLAlchemy models (full data model)
   seed.py     # CSV <-> DB load/export
-  services.py # estimate_history logging helpers
+  services.py # estimate_history logging, capacity/KPI/allocation rollups
   main.py     # NiceGUI entrypoint + page routes
-  pages/      # home, people, strategy, workstreams, tasks, capacity
-data/         # seed CSVs (incl. capacity_period, team_member_capacity, workstream_allocation,
+  pages/      # home, people, strategy (incl. workstreams), tasks
+data/         # seed CSVs (incl. capacity_period, team_member_capacity, workstream_allocation —
+              # those three tables have no CRUD page but are still seeded/used by services;
               # and estimate_history with a few sample estimate revisions)
 tests/        # seed round-trip, history logging, capacity/KPI summaries, timeline & chart builders
 ```
