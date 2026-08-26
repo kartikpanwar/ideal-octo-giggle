@@ -1,0 +1,5 @@
+id,name,role,default_weekly_hours,active,active_from
+1,Alice Nguyen,Engineering Lead,40,True,2024-01-15
+2,Ben Carter,Backend Engineer,40,True,2025-03-03
+3,Priya Shah,Data Engineer,32,True,2025-06-16
+4,Diego Ramos,Product Designer,40,True,2026-01-12
