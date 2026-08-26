@@ -154,6 +154,18 @@ chart = ui.echart({
 }).classes("w-full h-80")
 ```
 
+**Worked example:** [app/pages/workstreams.py](../app/pages/workstreams.py)'s
+`build_timeline_options()` renders each workstream's tasks as a Gantt-style
+timeline (ECharts has no native Gantt series, so it uses the standard
+invisible-offset + visible-duration stacked-bar workaround). It's a good
+reference for the pattern above — a pure, page-colocated builder function unit
+tested in [tests/test_timeline.py](../tests/test_timeline.py) — and for one
+sharp edge: **ECharts escapes `{b}`/`{c}`-style tooltip template
+substitutions**, so embedding HTML tags (`<br/>`, `<b>`) in a data point's
+`name` renders as literal text instead of formatting. Use `\n` plus
+`tooltip.extraCssText: "white-space:pre-line"` for multi-line tooltip content
+instead of HTML.
+
 - Build the `options` dict from data already assembled by an `app/services.py`
   function (e.g. `capacity_summary()`) — never query the DB inside a chart
   builder; keep the same page → services → db layering as everywhere else.

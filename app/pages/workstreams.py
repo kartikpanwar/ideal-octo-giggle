@@ -1,13 +1,24 @@
-"""Workstream CRUD page (child of strategy item)."""
+"""Workstream CRUD page (child of strategy item), plus a per-workstream
+task timeline rendered with ECharts (see docs/standards.md)."""
 
 from __future__ import annotations
 
 from nicegui import ui
+from sqlalchemy.orm import joinedload
 
 from app.db import get_session
-from app.models import WORKSTREAM_STATUSES, Workstream
+from app.models import TASK_STATUSES, WORKSTREAM_STATUSES, Task, Workstream
 from app.pages.common import fmt_date, member_options, parse_date, strategy_options
 from app.pages.layout import header
+
+# Status -> colour, used for both the timeline bars and its legend.
+STATUS_COLORS = {
+    "not_started": "#9e9e9e",
+    "in_progress": "#1976d2",
+    "blocked": "#e53935",
+    "done": "#43a047",
+    "cancelled": "#bdbdbd",
+}
 
 COLUMNS = [
     {"name": "id", "label": "ID", "field": "id", "align": "left"},
@@ -42,6 +53,108 @@ def _load_rows() -> list[dict]:
         ]
 
 
+def _load_timeline_tasks(workstream_id: int) -> list[dict]:
+    """Tasks in a workstream, dated ones first (ascending start), for the timeline chart."""
+    with get_session() as session:
+        tasks = (
+            session.query(Task)
+            .options(joinedload(Task.assignee))
+            .filter(Task.workstream_id == workstream_id)
+            .order_by(Task.estimated_start.is_(None), Task.estimated_start)
+            .all()
+        )
+        return [
+            {
+                "name": t.name,
+                "status": t.status,
+                "estimated_start": t.estimated_start,
+                "estimated_end": t.estimated_end,
+                "estimated_effort_weeks": t.estimated_effort_weeks,
+                "assignee": t.assignee.name if t.assignee else "",
+            }
+            for t in tasks
+        ]
+
+
+def build_timeline_options(tasks: list[dict]) -> dict | None:
+    """Stacked horizontal bar chart of each task's estimated span (ECharts options).
+
+    ECharts has no native Gantt series, so this uses the standard workaround: an
+    invisible 'offset' bar (days from the workstream's earliest start) stacked
+    under a visible 'duration' bar. Tasks missing either date can't be placed
+    and are excluded here; the caller lists them separately. Returns None when
+    no task has both dates.
+    """
+    dated = [t for t in tasks if t["estimated_start"] and t["estimated_end"]]
+    if not dated:
+        return None
+
+    timeline_start = min(t["estimated_start"] for t in dated)
+    names, offsets, bars = [], [], []
+    for t in dated:
+        offset_days = (t["estimated_start"] - timeline_start).days
+        duration_days = max((t["estimated_end"] - t["estimated_start"]).days, 1)
+        effort = t["estimated_effort_weeks"]
+        effort_txt = f"{effort:g} wks" if effort is not None else "— wks"
+        # Plain text with \n, not HTML: ECharts escapes the {b} template
+        # substitution before inserting it, so embedded tags like <br/> would
+        # render as literal text. extraCssText (below) turns \n into line
+        # breaks instead.
+        tooltip = (
+            f"{t['name']}\n"
+            f"{t['status']} · {t['assignee'] or 'Unassigned'}\n"
+            f"{fmt_date(t['estimated_start'])} → {fmt_date(t['estimated_end'])} · {effort_txt}"
+        )
+        names.append(t["name"])
+        offsets.append(offset_days)
+        bars.append(
+            {
+                "value": duration_days,
+                "name": tooltip,
+                "itemStyle": {"color": STATUS_COLORS.get(t["status"], "#9e9e9e")},
+            }
+        )
+
+    return {
+        "tooltip": {
+            "trigger": "item",
+            "formatter": "{b}",
+            "extraCssText": "text-align:left; white-space:pre-line; max-width:260px;",
+        },
+        "grid": {"left": "22%", "right": "6%", "top": "6%", "bottom": "14%", "containLabel": True},
+        "xAxis": {
+            "type": "value",
+            "name": f"Days from {fmt_date(timeline_start)}",
+            "nameLocation": "middle",
+            "nameGap": 28,
+            "axisLabel": {"formatter": "{value}d"},
+        },
+        "yAxis": {"type": "category", "inverse": True, "data": names},
+        "series": [
+            {
+                "name": "offset",
+                "type": "bar",
+                "stack": "timeline",
+                "silent": True,
+                "itemStyle": {"color": "transparent"},
+                "data": offsets,
+            },
+            {
+                "name": "duration",
+                "type": "bar",
+                "stack": "timeline",
+                "barWidth": "55%",
+                "data": bars,
+            },
+        ],
+    }
+
+
+def _present_statuses(tasks: list[dict]) -> list[str]:
+    """Statuses actually used in `tasks`, in canonical order (for the legend)."""
+    return [s for s in TASK_STATUSES if any(t["status"] == s for t in tasks)]
+
+
 def _save(row_id, name, description, strategy_id, status, lead_id, start, end) -> None:
     with get_session() as session:
         ws = session.get(Workstream, row_id) if row_id else Workstream()
@@ -66,10 +179,44 @@ def build() -> None:
             table = ui.table(columns=COLUMNS, rows=_load_rows(), row_key="id").classes("w-full")
             table.add_slot(
                 "body-cell-actions",
-                '<q-td :props="props"><q-btn dense flat icon="edit" '
-                "@click=\"() => $parent.$emit('edit', props.row)\"/></q-td>",
+                '<q-td :props="props">'
+                '<q-btn dense flat icon="edit" @click="() => $parent.$emit(\'edit\', props.row)"/>'
+                '<q-btn dense flat icon="timeline" @click="() => $parent.$emit(\'timeline\', props.row)"/>'
+                "</q-td>",
             )
             table.on("edit", lambda e: open_form(e.args))
+            table.on("timeline", lambda e: show_timeline(e.args))
+
+    def show_timeline(row: dict) -> None:
+        tasks = _load_timeline_tasks(row["id"])
+        options = build_timeline_options(tasks)
+        undated = [t["name"] for t in tasks if not (t["estimated_start"] and t["estimated_end"])]
+
+        with ui.dialog() as dialog, ui.card().classes("w-[48rem] max-w-full"):
+            ui.label(f"Timeline — {row['name']}").classes("text-lg font-bold")
+            if not tasks:
+                ui.label("No tasks in this workstream yet.").classes("text-sm text-gray-500")
+            elif options is None:
+                ui.label(
+                    "No tasks have both an estimated start and end date yet."
+                ).classes("text-sm text-gray-500")
+            else:
+                with ui.row().classes("items-center gap-4"):
+                    for status in _present_statuses(tasks):
+                        with ui.row().classes("items-center gap-1"):
+                            ui.element("div").classes("w-3 h-3 rounded-full").style(
+                                f"background-color: {STATUS_COLORS.get(status, '#9e9e9e')}"
+                            )
+                            ui.label(status).classes("text-xs text-gray-600")
+                chart_height = max(240, 42 * len(options["yAxis"]["data"]) + 90)
+                ui.echart(options).classes("w-full").style(f"height: {chart_height}px")
+                if undated:
+                    ui.label(
+                        "No estimated dates yet, not shown: " + ", ".join(undated)
+                    ).classes("text-xs text-gray-500")
+            with ui.row().classes("justify-end w-full"):
+                ui.button("Close", on_click=dialog.close).props("flat")
+        dialog.open()
 
     def open_form(row: dict | None = None) -> None:
         row = row or {}
