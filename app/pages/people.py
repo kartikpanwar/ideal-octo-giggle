@@ -250,7 +250,7 @@ def build_allocation_heatmap_options(members: list[dict], rows: list[dict]) -> d
         "visualMap": {
             "min": 0,
             "max": HEATMAP_MAX,
-            "calculable": True,
+            "calculable": False,
             "orient": "horizontal",
             "left": "center",
             "top": "0",

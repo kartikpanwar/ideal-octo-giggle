@@ -30,10 +30,14 @@ Then open http://localhost:8080.
 ## Pages
 
 - **Home** (`/`) — a KPI row (tasks in progress/blocked, active workstreams, people
-  over-allocated) followed by a **workstream x person grid**: workstreams as rows, people
-  as columns, each cell coloured by that person's total *open* (not done/cancelled)
-  estimated effort on tasks in that workstream — an at-a-glance "who's working on what".
-  Reserved for more visualisations later.
+  over-allocated), a **team capacity chart** (a stacked bar per month, one segment per
+  strategy item, showing team time in person-weeks going toward each — plus a dashed line
+  for total team available time, so allocation can be read against actual capacity; unlike
+  the other visualisations this includes tasks of every status, so past months stay
+  populated), and a **workstream x person grid**: workstreams as rows, people as columns,
+  each cell coloured by that person's total *open* (not done/cancelled) estimated effort on
+  tasks in that workstream — an at-a-glance "who's working on what". Reserved for more
+  visualisations later.
 - **People / Strategy / Workstreams / Tasks** — create and amend records. Tasks can be
   filtered by workstream, person, and status. Every status column (Strategy, Workstreams,
   Tasks) renders as a coloured dot + label rather than plain text, using a shared
@@ -65,7 +69,7 @@ app/
   pages/      # home, people, strategy, workstreams, tasks, capacity
 data/         # seed CSVs (incl. capacity_period, team_member_capacity, workstream_allocation,
               # and estimate_history with a few sample estimate revisions)
-tests/        # seed round-trip, history logging, capacity/KPI summaries, timeline & heatmap builders
+tests/        # seed round-trip, history logging, capacity/KPI summaries, timeline & chart builders
 ```
 
 ## Notes

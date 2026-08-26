@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     EstimateHistory,
+    StrategyItem,
     Task,
     TeamMember,
     TeamMemberCapacity,
@@ -165,6 +166,146 @@ def workstream_assignments(session: Session) -> list[dict]:
         }
         for (workstream_id, person_id), v in agg.items()
     ]
+
+
+def _month_start(d: date) -> date:
+    return date(d.year, d.month, 1)
+
+
+def _month_end(month_start: date) -> date:
+    """Last day of the calendar month `month_start` falls in."""
+    if month_start.month == 12:
+        return date(month_start.year + 1, 1, 1) - timedelta(days=1)
+    return date(month_start.year, month_start.month + 1, 1) - timedelta(days=1)
+
+
+def _next_month(month_start: date) -> date:
+    if month_start.month == 12:
+        return date(month_start.year + 1, 1, 1)
+    return date(month_start.year, month_start.month + 1, 1)
+
+
+def _days_in_month(month_start: date) -> int:
+    return (_month_end(month_start) - month_start).days + 1
+
+
+def _month_range(start: date, end: date) -> list[date]:
+    """First-of-month date for every calendar month from start through end
+    (inclusive), in order."""
+    months = []
+    current = _month_start(start)
+    last = _month_start(end)
+    while current <= last:
+        months.append(current)
+        current = _next_month(current)
+    return months
+
+
+def _days_in_month_overlap(month_start: date, span_start: date, span_end: date) -> int:
+    """Days of [span_start, span_end] that fall within the calendar month
+    starting at month_start (0 if there's no overlap)."""
+    overlap_start = max(span_start, month_start)
+    overlap_end = min(span_end, _month_end(month_start))
+    return max((overlap_end - overlap_start).days + 1, 0)
+
+
+def team_capacity_by_month(session: Session) -> dict:
+    """Team time (person-weeks) going toward each strategy item, by calendar
+    month, for the Home page's team capacity chart.
+
+    Each dated task's estimated_effort_weeks is spread across the calendar
+    months its [estimated_start, estimated_end] span touches, weighted by the
+    number of days of overlap in each month — a day-weighted split, distinct
+    from weekly_allocation()'s equal-per-ISO-week split, since the bucket
+    here is a variable-length calendar month rather than a week.
+
+    Unlike workstream_assignments(), this includes tasks of *every* status,
+    including done/cancelled: the chart trends across past, present and
+    future months, and excluding completed work would leave misleading gaps
+    in past months. A task whose workstream doesn't map to a strategy item
+    (or has no workstream at all) is grouped under a synthetic "Unassigned"
+    bucket (strategy_item_id=None) so the stack still totals all planned
+    effort rather than silently dropping it.
+
+    Also returns each month's total team available time — the sum of active
+    members' capacity fraction (default_weekly_hours / 40) times that
+    month's length in weeks (days / 7) — as a reference for how allocated
+    effort compares to capacity.
+
+    Returns {
+        "months": [date, ...] (first-of-month, ascending, contiguous —
+            filled in even for months with no task activity),
+        "strategy_items": [{"id": int|None, "name": str}, ...] (id=None is
+            "Unassigned"; named items sorted alphabetically, Unassigned last),
+        "effort": [{"month", "strategy_item_id", "effort_weeks"}, ...]
+            (sparse — only nonzero (month, strategy_item) combinations),
+        "available": [{"month", "available_weeks"}, ...] (one per month),
+    }
+    """
+    tasks = (
+        session.query(Task)
+        .filter(Task.estimated_start.isnot(None))
+        .filter(Task.estimated_end.isnot(None))
+        .filter(Task.estimated_effort_weeks.isnot(None))
+        .all()
+    )
+    if not tasks:
+        return {"months": [], "strategy_items": [], "effort": [], "available": []}
+
+    workstream_to_strategy = dict(session.query(Workstream.id, Workstream.strategy_item_id).all())
+    strategy_names = dict(session.query(StrategyItem.id, StrategyItem.name).all())
+
+    effort: dict[tuple[int | None, date], float] = {}
+    touched_months: set[date] = set()
+
+    for task in tasks:
+        months = _month_range(task.estimated_start, task.estimated_end)
+        total_days = (task.estimated_end - task.estimated_start).days + 1
+        strategy_id = workstream_to_strategy.get(task.workstream_id) if task.workstream_id else None
+
+        for month in months:
+            days = _days_in_month_overlap(month, task.estimated_start, task.estimated_end)
+            if days <= 0:
+                continue
+            share = task.estimated_effort_weeks * (days / total_days)
+            key = (strategy_id, month)
+            effort[key] = effort.get(key, 0.0) + share
+            touched_months.add(month)
+
+    months_sorted = _month_range(min(touched_months), max(touched_months)) if touched_months else []
+
+    strategy_ids_present = {sid for (sid, _month) in effort}
+    strategy_items = sorted(
+        (
+            {"id": sid, "name": strategy_names.get(sid, "Unassigned") if sid is not None else "Unassigned"}
+            for sid in strategy_ids_present
+        ),
+        key=lambda item: (item["id"] is None, item["name"]),
+    )
+
+    active_capacity_fraction = sum(
+        (m.default_weekly_hours or STANDARD_WEEKLY_HOURS) / STANDARD_WEEKLY_HOURS
+        for m in session.query(TeamMember).filter(TeamMember.active.is_(True)).all()
+    )
+    available = [
+        {
+            "month": month,
+            "available_weeks": round(active_capacity_fraction * (_days_in_month(month) / 7.0), 2),
+        }
+        for month in months_sorted
+    ]
+
+    effort_rows = [
+        {"month": month, "strategy_item_id": strategy_id, "effort_weeks": round(value, 2)}
+        for (strategy_id, month), value in effort.items()
+    ]
+
+    return {
+        "months": months_sorted,
+        "strategy_items": strategy_items,
+        "effort": effort_rows,
+        "available": available,
+    }
 
 
 def _iso_weeks_between(start: date, end: date) -> list[date]:

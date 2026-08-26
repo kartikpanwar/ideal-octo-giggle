@@ -228,7 +228,24 @@ heatmap put people on `yAxis`. There's no fixed rule for which entity goes on
 which axis — pick whichever reads as "columns vs. rows" the way the request
 described it, and keep the `yAxis.inverse: True` convention (first row of the
 underlying table renders at the top) regardless of which entity that ends up
-being.
+being. Both heatmaps set `visualMap.calculable: False` — the legend is
+colour-reference only, not a draggable range filter; there was no reason a
+viewer dragging the scale should silently change what's "hot" on a shared
+dashboard view. Only flip it to `True` for a specific, deliberate reason.
+
+[app/pages/home.py](../app/pages/home.py)'s
+`build_team_capacity_chart_options()` is a different shape entirely: an
+ordinary stacked **bar** chart (one series per strategy item, all sharing
+`stack: "capacity"`) with a `line` series overlaid unstacked, from
+`app.services.team_capacity_by_month()`. Because it's a standard multi-series
+chart on a category x-axis — not the offset/duration Gantt hack or a
+`heatmap` series — it uses a plain `tooltip: {"trigger": "axis"}` and gets
+ECharts' default multi-series tooltip for free, with no manually-built `{b}`
+template and none of that pattern's HTML-escaping gotcha to worry about.
+Reach for this shape (axis-trigger tooltip, ordinary bar/line series) by
+default; only build a manual item tooltip when the chart needs one of the two
+tricks above (Gantt positioning or a dense matrix) that a plain category axis
+can't express.
 
 - Build the `options` dict from data already assembled by an `app/services.py`
   function (e.g. `capacity_summary()`) — never query the DB inside a chart

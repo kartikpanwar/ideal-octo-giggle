@@ -1,11 +1,13 @@
 """Home / landing page.
 
-Leads with a KPI row, then a workstream x person grid of who's working on
-what. More visualisations will be added here later.
+Leads with a KPI row, then a team capacity chart (team time by strategy item
+over months) and a workstream x person grid of who's working on what. More
+visualisations will be added here later.
 """
 
 from __future__ import annotations
 
+from datetime import date
 from math import ceil
 
 from nicegui import ui
@@ -13,7 +15,7 @@ from nicegui import ui
 from app.db import get_session
 from app.models import TeamMember, Workstream
 from app.pages.layout import header
-from app.services import kpi_summary, workstream_assignments
+from app.services import kpi_summary, team_capacity_by_month, workstream_assignments
 
 # (label, kpi_summary key, icon, colour) for the KPI row, in display order.
 KPI_TILES = [
@@ -29,6 +31,15 @@ KPI_TILES = [
 GRID_COLORS = ["#e3f2fd", "#90caf9", "#42a5f5", "#1976d2", "#0d47a1"]
 MAX_TOOLTIP_TASKS = 4
 
+# Categorical palette for the team capacity chart's strategy-item stack,
+# cycled by index. "Unassigned" always gets UNASSIGNED_COLOR instead, since
+# it's a neutral fallback bucket, not one more strategy item to distinguish.
+STRATEGY_STACK_COLORS = [
+    "#1976d2", "#43a047", "#fb8c00", "#8e24aa", "#00838f", "#c62828", "#6d4c41", "#3949ab",
+]
+UNASSIGNED_COLOR = "#9e9e9e"
+AVAILABLE_LINE_COLOR = "#212121"
+
 
 def _kpi_tile(label: str, value: int, icon: str, color: str) -> None:
     with ui.card().classes("flex-1 min-w-[180px]"):
@@ -40,6 +51,70 @@ def _kpi_tile(label: str, value: int, icon: str, color: str) -> None:
             with ui.column().classes("gap-0"):
                 ui.label(str(value)).classes("text-2xl font-bold")
                 ui.label(label).classes("text-xs text-gray-500")
+
+
+def _month_label(m: date) -> str:
+    return f"{m.strftime('%b')}-{str(m.year)[-2:]}"  # e.g. "Sep-26", matching the Gantt charts' style
+
+
+def build_team_capacity_chart_options(capacity: dict) -> dict | None:
+    """Stacked bar chart of team time (person-weeks) by strategy item, one
+    bar per calendar month, from app.services.team_capacity_by_month. A
+    dashed line overlays each month's total team available time, so the
+    stacked bars' total height can be read against actual team capacity.
+
+    A plain axis-trigger tooltip is used here (not the Gantt/heatmap charts'
+    manually-built `{b}` tooltip) — this is an ordinary stacked bar + line
+    combo, so ECharts' default multi-series tooltip already shows every
+    series' name and value at the hovered month with no custom formatting
+    needed.
+
+    Returns None when there's no dated, estimated task to plot.
+    """
+    months = capacity["months"]
+    strategy_items = capacity["strategy_items"]
+    if not months or not strategy_items:
+        return None
+
+    by_key = {(r["strategy_item_id"], r["month"]): r["effort_weeks"] for r in capacity["effort"]}
+    available_by_month = {r["month"]: r["available_weeks"] for r in capacity["available"]}
+
+    bar_series = []
+    color_i = 0
+    for item in strategy_items:
+        if item["id"] is None:
+            color = UNASSIGNED_COLOR
+        else:
+            color = STRATEGY_STACK_COLORS[color_i % len(STRATEGY_STACK_COLORS)]
+            color_i += 1
+        bar_series.append(
+            {
+                "name": item["name"],
+                "type": "bar",
+                "stack": "capacity",
+                "itemStyle": {"color": color},
+                "data": [by_key.get((item["id"], m), 0.0) for m in months],
+            }
+        )
+
+    line_series = {
+        "name": "Total available",
+        "type": "line",
+        "itemStyle": {"color": AVAILABLE_LINE_COLOR},
+        "lineStyle": {"type": "dashed", "width": 2},
+        "symbol": "circle",
+        "symbolSize": 6,
+        "data": [available_by_month.get(m, 0.0) for m in months],
+    }
+
+    return {
+        "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
+        "legend": {"top": 0, "type": "scroll"},
+        "grid": {"left": "6%", "right": "4%", "top": 60, "bottom": "8%", "containLabel": True},
+        "xAxis": {"type": "category", "data": [_month_label(m) for m in months]},
+        "yAxis": {"type": "value", "name": "Person-weeks", "nameLocation": "middle", "nameGap": 40},
+        "series": [*bar_series, line_series],
+    }
 
 
 def _load_workstream_person_grid_data() -> tuple[list[dict], list[dict], list[dict]]:
@@ -126,7 +201,7 @@ def build_workstream_person_grid_options(
         "visualMap": {
             "min": 0,
             "max": heat_max,
-            "calculable": True,
+            "calculable": False,
             "orient": "horizontal",
             "left": "center",
             "top": "0",
@@ -153,6 +228,21 @@ def build() -> None:
         with ui.row().classes("w-full gap-4 flex-wrap"):
             for label, key, icon, color in KPI_TILES:
                 _kpi_tile(label, kpis[key], icon, color)
+
+        ui.label("Team capacity").classes("text-2xl font-bold")
+        ui.label(
+            "Team time (person-weeks) going toward each strategy item, by month, against "
+            "total team available time. Includes tasks of every status, so past months "
+            "reflect what was actually planned then, not just what's still open."
+        ).classes("text-sm text-gray-500")
+
+        with get_session() as session:
+            capacity = team_capacity_by_month(session)
+        capacity_options = build_team_capacity_chart_options(capacity)
+        if capacity_options is None:
+            ui.label("No dated, estimated tasks yet.").classes("text-sm text-gray-500")
+        else:
+            ui.echart(capacity_options).classes("w-full h-96")
 
         ui.label("Who's working on what").classes("text-2xl font-bold")
         ui.label(
