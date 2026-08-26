@@ -1,6 +1,6 @@
 # Architecture
 
-Architectural reference for the Capacity Estimation app: the material components,
+Architectural reference for the On My Plate app: the material components,
 the decisions behind them, and the project structure. Complements
 [data-model.md](data-model.md) (entity/table design), [standards.md](standards.md)
 (code and design conventions, including the ECharts visualisation standard), and
@@ -87,9 +87,9 @@ the app's architecture:
   `entity_id`, covering `task`/`workstream`/`strategy_item`). It's written
   through one shared helper, `record_status_change()` / `record_task_change()`
   in [app/services.py](../app/services.py), so every entity logs status/estimate
-  changes the same way. Currently only the Task page calls it — Workstream and
-  Strategy Item pages do not yet log history on edit (see
-  [Known constraints](#known-constraints--future-decisions)).
+  changes the same way. Currently only the Task page calls it — workstream and
+  strategy item edits (both on the Workstreams page) do not yet log history
+  (see [Known constraints](#known-constraints--future-decisions)).
 - **Two-level capacity allocation:** `team_member_capacity` (availability per
   person per `capacity_period`) and `workstream_allocation` (planned effort per
   person per workstream per period) are separate from task-level
@@ -124,7 +124,7 @@ app/seed.py        CSV <-> DB translation
   the browser preview tool.
 - Each CRUD entity follows the same internal pattern: `_load_rows()` (query +
   flatten to dicts for `ui.table`), a `_save_*()` (upsert), and an
-  `open_*_form()` (a `ui.dialog` acting as both add and edit). `app/pages/strategy.py`
+  `open_*_form()` (a `ui.dialog` acting as both add and edit). `app/pages/workstreams.py`
   hosts two such entities on one page — strategy items as cards, each with its
   workstreams in a nested `ui.table` underneath — since the two are meant to be
   browsed together (see the "Combined pages" note below).
@@ -164,13 +164,13 @@ app/seed.py        CSV <-> DB translation
 │   ├── seed.py               # CSV -> DB (load_csvs) and DB -> CSV (export_csvs)
 │   ├── services.py            # estimate_history logging, capacity/KPI/allocation rollups
 │   └── pages/
-│       ├── layout.py           # Shared header/nav + Export-to-CSV action
-│       ├── common.py            # Date parsing, FK dropdown helpers, shared status colour map/badge slot
+│       ├── layout.py           # Shared header/nav (app name + icon) + Export-to-CSV action
+│       ├── common.py            # Date parsing, FK dropdown helpers, shared colour maps/badge slots
 │       ├── home.py               # Landing page: KPI row, team capacity chart, workstream x person grid
 │       ├── people.py              # Team member CRUD + per-person timeline + weekly allocation heatmap
-│       ├── strategy.py             # Strategy items (cards) with their workstreams nested underneath,
+│       ├── workstreams.py          # Strategy items (cards) with their workstreams nested underneath,
 │       │                           # incl. per-workstream timeline; combined page (see note below)
-│       └── tasks.py                  # Task CRUD + filters (multi-select status) + history viewer
+│       └── tasks.py                  # Task CRUD (incl. priority) + filters (multi-select status) + history viewer
 ├── data/                                # seed CSVs, one per table, loaded in FK-safe order
 │   ├── people.csv, strategy_items.csv, workstreams.csv, tasks.csv
 │   ├── capacity_period.csv, team_member_capacity.csv, workstream_allocation.csv
@@ -192,11 +192,14 @@ app/seed.py        CSV <-> DB translation
 ```
 
 **Combined pages:** Strategy items and workstreams share one page/route
-(`app/pages/strategy.py`, `/strategy`) rather than two, since a workstream is
-only ever browsed in the context of its strategy item — each strategy item
-renders as a card with its workstreams in a nested table underneath, plus an
-"Unassigned" card for workstreams with no `strategy_item_id`. There used to be
-a standalone `/capacity` page (tabbed CRUD for `capacity_period` /
+(`app/pages/workstreams.py`, `/workstreams`) rather than two, since a
+workstream is only ever browsed in the context of its strategy item — each
+strategy item renders as a card with its workstreams in a nested table
+underneath, plus an "Unassigned" card for workstreams with no
+`strategy_item_id`. The page (and its route/nav label) is named after
+workstreams, not strategy items, since workstreams are the unit a user
+actually browses day to day; strategy items are the grouping context. There
+used to be a standalone `/capacity` page (tabbed CRUD for `capacity_period` /
 `team_member_capacity` / `workstream_allocation`); it was removed, but the
 tables themselves, their seed CSVs, and every service function that reads them
 (`capacity_summary()`, the Home KPI row) are unaffected — new rows for those
@@ -207,7 +210,7 @@ three tables can currently only be added by editing the CSVs before startup.
 1. **Startup:** `app/main.py` calls `bootstrap()` once at import time (not inside
    `ui.run()`), which creates all tables and loads every `data/*.csv` into the
    in-memory DB. This happens once per process, before any page is served.
-2. **Page load:** NiceGUI routes `/`, `/people`, `/strategy`, `/tasks` each to
+2. **Page load:** NiceGUI routes `/`, `/people`, `/workstreams`, `/tasks` each to
    a `build()` function that opens its own session(s), queries rows, and
    renders `ui.table`/`ui.dialog`/`ui.echart` components.
 3. **Mutation:** a dialog's Save handler opens a fresh session, upserts the ORM

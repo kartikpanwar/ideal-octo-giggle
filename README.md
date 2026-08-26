@@ -1,4 +1,4 @@
-# Capacity Estimation
+# On My Plate
 
 A NiceGUI app for estimating team capacity against planned work, organised as
 **strategy items → workstreams → tasks**, with each task assigned to a team member.
@@ -36,24 +36,26 @@ Then open http://localhost:8080.
   the other visualisations this includes tasks of every status, so past months stay
   populated), and a **workstream x person grid**: workstreams as rows, people as columns,
   each cell coloured by that person's total *open* (not done/cancelled) estimated effort on
-  tasks in that workstream — an at-a-glance "who's working on what". Reserved for more
-  visualisations later.
+  tasks in that workstream — an at-a-glance "who's working on what".
 - **People** (`/people`) — team member CRUD (name, role, weekly hours, active, active-from
   date; no email field). Each row shows an initials avatar (colour stable per person). Each
   row's **timeline** view compares estimated vs. actual dates across that person's tasks,
   and the page also has a **weekly allocation heatmap**: one row per person, one column per
   calendar week, coloured by % of that week's capacity consumed by estimated task effort
   (spread evenly across each task's date range).
-- **Strategy** (`/strategy`) — strategy items and their workstreams on one page: each
+- **Workstreams** (`/workstreams`) — strategy items and their workstreams on one page: each
   strategy item is a card with its workstreams listed underneath (plus an "Unassigned" card
-  for workstreams with no strategy item), with a status filter for the workstream lists.
-  Each workstream row has a **timeline** of its constituent tasks' estimated dates — an
-  ECharts Gantt-style chart, same technique as the People page's per-person timeline.
+  for workstreams with no strategy item), with a multi-select status filter for the
+  workstream lists. Each workstream row has a **timeline** of its constituent tasks'
+  estimated dates — an ECharts Gantt-style chart, same technique as the People page's
+  per-person timeline.
 - **Tasks** (`/tasks`) — task CRUD, including actual start/end dates alongside the estimated
-  ones. Filterable by workstream, person, and status (status is multi-select, defaulting to
-  everything except done/cancelled).
+  ones and a **priority** field (low/medium/high, defaults to medium). Filterable by
+  workstream, person, and status (status is multi-select, defaulting to everything except
+  done/cancelled).
 - Every status column (strategy items, workstreams, tasks) renders as a coloured dot +
-  label rather than plain text, using a shared status → colour map.
+  label rather than plain text, using a shared status → colour map; task priority uses the
+  same coloured-dot pattern with its own (deliberately distinct) traffic-light palette.
 - **Export to CSV** (header button) — write the in-memory DB back to `data/*.csv`.
 
 ## Test
@@ -71,7 +73,8 @@ app/
   seed.py     # CSV <-> DB load/export
   services.py # estimate_history logging, capacity/KPI/allocation rollups
   main.py     # NiceGUI entrypoint + page routes
-  pages/      # home, people, strategy (incl. workstreams), tasks
+  pages/      # home, people, workstreams (incl. strategy items), tasks
+              # (layout.py holds the shared header/nav, app name, and icon)
 data/         # seed CSVs (incl. capacity_period, team_member_capacity, workstream_allocation —
               # those three tables have no CRUD page but are still seeded/used by services;
               # and estimate_history with a few sample estimate revisions)
