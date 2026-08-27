@@ -146,8 +146,17 @@ across periods.
 | id | PK | |
 | workstream_id | FK → workstream | |
 | team_member_id | FK → team_member | |
-| period_id | FK → capacity_period | |
-| allocated_weeks | numeric | person-weeks allocated to this workstream (or use `allocation_pct`) |
+| period_id | FK → capacity_period, nullable | null for a standing `allocation_pct` row (see below) |
+| allocated_weeks | numeric | person-weeks allocated to this workstream, for a given period |
+| allocation_pct | numeric | % of the person's time standing-allocated to this workstream, independent of period; a person's rows should sum to ~100 across their workstreams |
+
+Both allocation units live on the same table but represent two independent, non-period
+and period-scoped views: `allocated_weeks` rows carry a `period_id` and are the
+time-phased top-down plan; `allocation_pct` rows always have `period_id = NULL` and
+represent each person's current standing split of time across workstreams (e.g. "50% on
+Guided Setup Flow, 50% on In-App Checklist"), edited from the People page and
+visualised on the Home page. A person's `allocation_pct` rows summing to more than 100
+means they're over-allocated; less than 100 means they have spare capacity.
 
 > **Task-level allocation** is captured by the task's `assignee_id` +
 > `estimated_effort_weeks`. Rolling up task effort per member per period and comparing it
@@ -192,7 +201,5 @@ Items to confirm before generating concrete schemas:
 3. **Polymorphic history vs. per-entity tables** — `estimate_history` is polymorphic
    (one place to query, no DB-level FK integrity). Alternative: separate
    `task_history` / `workstream_history` / `strategy_item_history` tables.
-4. **Allocation unit** — `allocated_weeks` (person-weeks) vs. `allocation_pct` of a
-   period's capacity.
-5. **Target stack** — SQL dialect (Postgres, etc.) and ORM (Prisma, SQLAlchemy, Django,
+4. **Target stack** — SQL dialect (Postgres, etc.) and ORM (Prisma, SQLAlchemy, Django,
    …) for schema generation.

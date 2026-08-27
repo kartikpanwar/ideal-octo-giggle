@@ -203,8 +203,10 @@ app/seed.py        CSV <-> DB translation
 │       ├── layout.py           # Shared header/nav (app name + icon) + Export-to-CSV action
 │       ├── theme.py             # Configurable UI palette (header/buttons/background); see "7." above
 │       ├── common.py            # Date parsing, FK dropdown helpers, shared colour maps/badge slots
-│       ├── home.py               # Landing page: KPI row, team capacity chart, workstream x person grid
+│       ├── home.py               # Landing page: KPI row, team capacity chart, workstream x person grid,
+│       │                           # and the per-person workstream allocation chart
 │       ├── people.py              # Team member CRUD + per-person timeline + weekly allocation heatmap
+│       │                           # + per-person workstream allocation_pct editor
 │       ├── workstreams.py          # Strategy items (cards) with their workstreams nested underneath,
 │       │                           # incl. per-workstream timeline; combined page (see note below)
 │       └── tasks.py                  # Task CRUD (incl. priority) + filters (multi-select status) + history viewer
@@ -240,8 +242,15 @@ actually browses day to day; strategy items are the grouping context. There
 used to be a standalone `/capacity` page (tabbed CRUD for `capacity_period` /
 `team_member_capacity` / `workstream_allocation`); it was removed, but the
 tables themselves, their seed CSVs, and every service function that reads them
-(`capacity_summary()`, the Home KPI row) are unaffected — new rows for those
-three tables can currently only be added by editing the CSVs before startup.
+(`capacity_summary()`, the Home KPI row) are unaffected — new rows for
+`capacity_period`, `team_member_capacity`, and `workstream_allocation`'s
+period-scoped `allocated_weeks` rows can currently only be added by editing
+the CSVs before startup. The one exception is `workstream_allocation`'s other
+use — standing `allocation_pct` rows (`period_id IS NULL`) — which does have
+a UI: the People page's per-row "Allocation" action
+(`app.services.set_person_allocations()`), visualised on the Home page's
+workstream allocation chart. See docs/data-model.md's `workstream_allocation`
+section for how the two allocation units on that one table stay independent.
 
 ## Request / lifecycle flow
 
