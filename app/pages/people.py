@@ -1,6 +1,7 @@
-"""People (team member) CRUD page, plus two ECharts visualisations:
-a per-person task timeline comparing estimated vs. actual dates, and a
-week x person weekly-allocation heatmap — see docs/standards.md."""
+"""People (team member) CRUD page, a per-person standing workstream allocation_pct
+editor, plus two ECharts visualisations: a per-person task timeline comparing
+estimated vs. actual dates, and a week x person weekly-allocation heatmap
+— see docs/standards.md."""
 
 from __future__ import annotations
 
@@ -11,9 +12,9 @@ from sqlalchemy.orm import joinedload
 
 from app.db import get_session
 from app.models import TASK_STATUSES, Task, TeamMember
-from app.pages.common import STATUS_COLORS, fmt_date, month_year_axis_label, parse_date
+from app.pages.common import STATUS_COLORS, fmt_date, month_year_axis_label, parse_date, workstream_options
 from app.pages.layout import header
-from app.services import weekly_allocation
+from app.services import set_person_allocations, weekly_allocation, workstream_allocation_pct
 
 # Fixed styling for the "actual" bar, distinct from the status-coloured
 # "estimated" bar so the two read as different series, not different statuses.
@@ -319,6 +320,15 @@ def _save(row_id: int | None, name, role, hours, active, active_from) -> None:
             session.add(person)
 
 
+def _load_person_allocation_pct(person_id: int) -> dict[int, float]:
+    with get_session() as session:
+        return {
+            r["workstream_id"]: r["allocation_pct"]
+            for r in workstream_allocation_pct(session)
+            if r["team_member_id"] == person_id
+        }
+
+
 def build() -> None:
     header("People")
 
@@ -334,10 +344,12 @@ def build() -> None:
                 '<q-td :props="props">'
                 '<q-btn dense flat icon="edit" @click="() => $parent.$emit(\'edit\', props.row)"/>'
                 '<q-btn dense flat icon="timeline" @click="() => $parent.$emit(\'timeline\', props.row)"/>'
+                '<q-btn dense flat icon="pie_chart" @click="() => $parent.$emit(\'allocation\', props.row)"/>'
                 "</q-td>",
             )
             table.on("edit", lambda e: open_form(e.args))
             table.on("timeline", lambda e: show_timeline(e.args))
+            table.on("allocation", lambda e: open_allocation_form(e.args))
 
     def show_timeline(row: dict) -> None:
         tasks = _load_timeline_tasks(row["id"])
@@ -406,6 +418,58 @@ def build() -> None:
                       hours.value, active.value, active_from.value)
                 dialog.close()
                 refresh()
+                ui.notify("Saved", type="positive")
+
+            with ui.row().classes("justify-end w-full"):
+                ui.button("Cancel", on_click=dialog.close).props("flat")
+                ui.button("Save", on_click=save)
+        dialog.open()
+
+    def open_allocation_form(row: dict) -> None:
+        workstreams = workstream_options()
+        current = _load_person_allocation_pct(row["id"])
+
+        with ui.dialog() as dialog, ui.card().classes("w-96"):
+            ui.label(f"Workstream allocation — {row['name']}").classes("text-lg font-bold")
+            if not workstreams:
+                ui.label("No workstreams yet.").classes("text-sm text-gray-500")
+                with ui.row().classes("justify-end w-full"):
+                    ui.button("Close", on_click=dialog.close).props("flat")
+                dialog.open()
+                return
+
+            ui.label("% of this person's time committed to each workstream.").classes(
+                "text-sm text-gray-500"
+            )
+            inputs: dict[int, ui.number] = {
+                ws_id: ui.number(ws_name, value=current.get(ws_id, 0) or 0, min=0, max=100, step=5).classes(
+                    "w-full"
+                )
+                for ws_id, ws_name in workstreams.items()
+            }
+            total_label = ui.label().classes("text-sm font-medium")
+
+            def update_total() -> None:
+                total = sum(inp.value or 0 for inp in inputs.values())
+                if total > 100:
+                    total_label.classes(replace="text-sm font-medium text-red-600")
+                    total_label.text = f"Total: {total:g}% — over-allocated"
+                elif total < 100:
+                    total_label.classes(replace="text-sm font-medium text-amber-600")
+                    total_label.text = f"Total: {total:g}% — {100 - total:g}% unallocated"
+                else:
+                    total_label.classes(replace="text-sm font-medium text-green-600")
+                    total_label.text = "Total: 100%"
+
+            for number in inputs.values():
+                number.on_value_change(lambda: update_total())
+            update_total()
+
+            def save() -> None:
+                allocations = {ws_id: (inp.value or 0) for ws_id, inp in inputs.items()}
+                with get_session() as session:
+                    set_person_allocations(session, row["id"], allocations)
+                dialog.close()
                 ui.notify("Saved", type="positive")
 
             with ui.row().classes("justify-end w-full"):

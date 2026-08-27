@@ -30,6 +30,12 @@ CLOSED_STATUSES = ("done", "cancelled")
 STANDARD_WEEKLY_HOURS = 40.0
 
 
+def _capacity_fraction(default_weekly_hours: float | None) -> float:
+    """A member's weekly capacity as a fraction of full-time. Members without
+    an hours value set are assumed full-time."""
+    return (default_weekly_hours or STANDARD_WEEKLY_HOURS) / STANDARD_WEEKLY_HOURS
+
+
 def record_status_change(
     session: Session,
     *,
@@ -114,6 +120,122 @@ def capacity_summary(session: Session) -> list[dict]:
                 "estimated_open": round(estimated, 2),
                 "remaining": round(available - estimated, 2),
                 "over_allocated": estimated > available or allocated > available,
+            }
+        )
+    return rows
+
+
+def workstream_allocation_pct(session: Session) -> list[dict]:
+    """Each person's standing % allocation across workstreams (the
+    `allocation_pct` rows of `workstream_allocation`, always `period_id IS
+    NULL` — see docs/data-model.md). Distinct from the period-scoped
+    `allocated_weeks` top-down plan used by capacity_summary().
+
+    Returns: list of {"team_member_id", "workstream_id", "allocation_pct"}.
+    """
+    rows = (
+        session.query(WorkstreamAllocation)
+        .filter(WorkstreamAllocation.period_id.is_(None))
+        .filter(WorkstreamAllocation.allocation_pct.isnot(None))
+        .all()
+    )
+    return [
+        {
+            "team_member_id": r.team_member_id,
+            "workstream_id": r.workstream_id,
+            "allocation_pct": r.allocation_pct,
+        }
+        for r in rows
+    ]
+
+
+def set_person_allocations(session: Session, person_id: int, allocations: dict[int, float]) -> None:
+    """Replace a person's standing workstream allocation_pct rows with `allocations`
+    (workstream_id -> pct). A workstream missing from `allocations`, or mapped to a
+    falsy pct, has its row deleted rather than kept at 0 — so a person's allocation
+    rows only ever list workstreams they're actually committed to.
+    """
+    existing = {
+        row.workstream_id: row
+        for row in session.query(WorkstreamAllocation)
+        .filter_by(team_member_id=person_id, period_id=None)
+        .all()
+    }
+    for workstream_id, pct in allocations.items():
+        row = existing.pop(workstream_id, None)
+        if pct:
+            if row:
+                row.allocation_pct = pct
+            else:
+                session.add(
+                    WorkstreamAllocation(
+                        team_member_id=person_id,
+                        workstream_id=workstream_id,
+                        period_id=None,
+                        allocation_pct=pct,
+                    )
+                )
+        elif row:
+            session.delete(row)
+    for leftover in existing.values():
+        session.delete(leftover)
+
+
+def workstream_capacity_check(session: Session) -> list[dict]:
+    """Per-workstream comparison of top-down allocated capacity against
+    bottom-up required task effort, both in person-weeks:
+
+    - allocated_weeks: each person's standing allocation_pct on this
+      workstream (see workstream_allocation_pct), converted to a weekly
+      capacity rate (pct/100 * their capacity fraction) and spread across the
+      workstream's estimated duration.
+    - required_weeks: sum of estimated_effort_weeks for this workstream's
+      tasks that aren't done/cancelled — the total remaining ask, regardless
+      of whether those tasks are assigned yet.
+    - sufficient: allocated_weeks >= required_weeks.
+
+    Workstreams missing an estimated_start/estimated_end are skipped — there's
+    no duration to spread a standing % allocation over, so they can't be
+    compared on this person-weeks basis.
+    """
+    capacity_fraction = {m.id: _capacity_fraction(m.default_weekly_hours) for m in session.query(TeamMember).all()}
+
+    alloc_pct: dict[int, list[tuple[int, float]]] = {}
+    for r in (
+        session.query(WorkstreamAllocation)
+        .filter(WorkstreamAllocation.period_id.is_(None))
+        .filter(WorkstreamAllocation.allocation_pct.isnot(None))
+        .all()
+    ):
+        alloc_pct.setdefault(r.workstream_id, []).append((r.team_member_id, r.allocation_pct))
+
+    required = dict(
+        session.query(
+            Task.workstream_id,
+            func.coalesce(func.sum(Task.estimated_effort_weeks), 0.0),
+        )
+        .filter(Task.workstream_id.isnot(None))
+        .filter(Task.status.notin_(CLOSED_STATUSES))
+        .group_by(Task.workstream_id)
+    )
+
+    rows = []
+    for ws in session.query(Workstream).order_by(Workstream.id).all():
+        if not (ws.estimated_start and ws.estimated_end):
+            continue
+        duration_weeks = max((ws.estimated_end - ws.estimated_start).days / 7.0, 0.0)
+        allocated_weeks = sum(
+            (pct / 100.0) * capacity_fraction.get(member_id, 1.0) * duration_weeks
+            for member_id, pct in alloc_pct.get(ws.id, [])
+        )
+        required_weeks = float(required.get(ws.id, 0.0) or 0.0)
+        rows.append(
+            {
+                "workstream_id": ws.id,
+                "name": ws.name,
+                "allocated_weeks": round(allocated_weeks, 2),
+                "required_weeks": round(required_weeks, 2),
+                "sufficient": allocated_weeks >= required_weeks,
             }
         )
     return rows
@@ -284,7 +406,7 @@ def team_capacity_by_month(session: Session) -> dict:
     )
 
     active_capacity_fraction = sum(
-        (m.default_weekly_hours or STANDARD_WEEKLY_HOURS) / STANDARD_WEEKLY_HOURS
+        _capacity_fraction(m.default_weekly_hours)
         for m in session.query(TeamMember).filter(TeamMember.active.is_(True)).all()
     )
     available = [
@@ -366,7 +488,7 @@ def weekly_allocation(session: Session) -> list[dict]:
             load[key] = load.get(key, 0.0) + share
 
     capacity_fraction = {
-        m.id: (m.default_weekly_hours or STANDARD_WEEKLY_HOURS) / STANDARD_WEEKLY_HOURS
+        m.id: _capacity_fraction(m.default_weekly_hours)
         for m in session.query(TeamMember).all()
     }
 

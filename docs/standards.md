@@ -276,6 +276,13 @@ Reach for this shape (axis-trigger tooltip, ordinary bar/line series) by
 default; only build a manual item tooltip when the chart needs one of the two
 tricks above (Gantt positioning or a dense matrix) that a plain category axis
 can't express.
+`build_workstream_capacity_check_options()` is a second instance of the same
+bar+line shape (per-workstream allocated-capacity bar vs. required-effort
+line, from `app.services.workstream_capacity_check()`), with one addition:
+each bar's `itemStyle.color` is set per-datapoint (green/red for
+sufficient/insufficient) rather than once for the whole series — the same
+per-item `itemStyle` override `build_timeline_options()` uses to colour each
+Gantt bar by status, just on an ordinary bar series instead of the Gantt one.
 
 - Build the `options` dict from data already assembled by an `app/services.py`
   function (e.g. `capacity_summary()`) — never query the DB inside a chart
