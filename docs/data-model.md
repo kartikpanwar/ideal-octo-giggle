@@ -1,4 +1,4 @@
-# Capacity Estimation — Data Model
+# On My Plate — Data Model
 
 Draft data model for the team capacity estimation application. This document is the
 source of truth for generating database schemas (DDL / ORM models) later on.
@@ -87,6 +87,7 @@ capacity estimate.
 | name | text | |
 | description | text | |
 | status | enum | `not_started, in_progress, blocked, done, cancelled` |
+| priority | enum | `low, medium, high`; defaults to `medium` |
 | estimated_effort_weeks | numeric | task-level capacity estimate, in person-weeks |
 | estimated_start | date | latest snapshot; full history in `estimate_history` |
 | estimated_end | date | latest snapshot; full history in `estimate_history` |
