@@ -157,6 +157,21 @@ ships. Consistency comes from reusing the same handful of patterns everywhere:
   in [tests/test_common.py](../tests/test_common.py) checks this), so a red
   "blocked" status dot and a red "high" priority dot never look like they're
   reporting the same thing.
+- **App theme (header/nav, buttons, page background):** this is a *different*
+  colour system from the status/priority dots above, and lives in
+  [theme.py](../app/pages/theme.py), not `common.py`. It's non-semantic UI
+  chrome — branding, not information — so it's configured once for the whole
+  app (`ui.colors(...)` + a page-background override, applied via
+  `apply_theme()` from `layout.header()`) rather than per-row. Never point a
+  `STATUS_COLORS`/`PRIORITY_COLORS` value at a theme role or vice versa: a
+  brand refresh shouldn't change what "blocked" looks like, and a status
+  change shouldn't change the header colour. To add or switch a palette, see
+  [theme.py](../app/pages/theme.py) and [architecture.md](architecture.md)'s
+  "Configurable theme" section — the short version is: add a new `Palette`
+  entry to `PALETTES` with real hex values for every role (never leave a role
+  blank to "inherit" — that only works for `background`, and only because
+  `None` there has an explicit meaning: "use Quasar/NiceGUI's own default,
+  don't override it"), then point `ACTIVE_PALETTE` at its key.
 
 ## Visualisations: use ECharts via NiceGUI
 

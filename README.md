@@ -12,6 +12,11 @@ A NiceGUI app for estimating team capacity against planned work, organised as
   every start. Use **Export to CSV** in the app to write the current DB back to `data/`.
 - **History:** amending a task's status or estimated dates appends a snapshot to
   `estimate_history`, including a free-text status update.
+- **Theme:** the app's visual palette (header/nav bar, buttons, page background — not the
+  status/priority dot colours, which carry meaning and stay fixed) is configurable in
+  [app/pages/theme.py](app/pages/theme.py). Switch it by changing the `ACTIVE_PALETTE`
+  constant to another key in `PALETTES` (currently `"classic"`, the original Quasar
+  defaults, and `"deep_space"`, the active brand palette) and restarting the app.
 
 ## Requirements
 
@@ -74,7 +79,8 @@ app/
   services.py # estimate_history logging, capacity/KPI/allocation rollups
   main.py     # NiceGUI entrypoint + page routes
   pages/      # home, people, workstreams (incl. strategy items), tasks
-              # (layout.py holds the shared header/nav, app name, and icon)
+              # (layout.py holds the shared header/nav, app name, and icon;
+              # theme.py holds the configurable colour palette)
 data/         # seed CSVs (incl. capacity_period, team_member_capacity, workstream_allocation —
               # those three tables have no CRUD page but are still seeded/used by services;
               # and estimate_history with a few sample estimate revisions)
