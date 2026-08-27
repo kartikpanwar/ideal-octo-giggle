@@ -141,3 +141,8 @@ class WorkstreamAllocation(Base):
     team_member_id: Mapped[int] = mapped_column(ForeignKey("team_member.id"))
     period_id: Mapped[int | None] = mapped_column(ForeignKey("capacity_period.id"))
     allocated_weeks: Mapped[float | None] = mapped_column(Float)
+    # Standing % of the person's time committed to this workstream, independent of
+    # `period_id`/`allocated_weeks` (the time-phased person-weeks plan above) — see
+    # docs/data-model.md's "Allocation unit" open decision. Rows carrying this field
+    # are always period_id=None; see app.services.workstream_allocation_pct.
+    allocation_pct: Mapped[float | None] = mapped_column(Float)
