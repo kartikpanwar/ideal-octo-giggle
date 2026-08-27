@@ -1,7 +1,7 @@
 [project]
 name = "capacity-estimation"
 version = "0.1.0"
-description = "Team capacity estimation app (NiceGUI + in-memory SQLite)"
+description = "On My Plate: team capacity estimation app (NiceGUI + in-memory SQLite)"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

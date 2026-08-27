@@ -31,9 +31,9 @@ STATUS_COLOR_FALLBACK = "#9e9e9e"
 # red "blocked" status dot and a red "high" priority dot look like the same
 # signal when they're not.
 PRIORITY_COLORS = {
-    "low": "#66bb6a",
-    "medium": "#fb8c00",
-    "high": "#e53935",
+    "low": "#7cb342",
+    "medium": "#f9a825",
+    "high": "#c62828",
 }
 PRIORITY_COLOR_FALLBACK = "#9e9e9e"
 
